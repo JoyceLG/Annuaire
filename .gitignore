@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets locaux : voir .env.exemple pour la liste des variables attendues
+.env
+
+# Base locale : recréée par les migrations puis le peuplement
+*.db
