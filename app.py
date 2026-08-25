@@ -92,3 +92,56 @@ def celsius2fahrenheit(degres: float):
 @app.route("/recherche/<path:chemin>")
 def recherche_chemin(chemin: str):
     return chemin
+
+
+###################################
+# SESSION 3
+###################################
+
+
+@app.get("/mission")
+def lire_mission():
+    return "Mission : Apollo 11"
+
+
+@app.post("/mission")
+def demarrer_mission():
+    return "Mission démarrée !"
+
+
+@app.delete("/mission")
+def annuler_mission():
+    return "Mission annulée"
+
+
+# Liste des noms, séparés par des virgules
+@app.get("/api/astronautes")
+def liste_astronautes():
+    return "La liste des astronautes : " + ", ".join(ASTRONAUTES)
+
+
+# Ajoute un astronaute à la liste
+@app.post("/api/astronautes/<nom>")
+def ajoute_astronaute(nom: str):
+    ASTRONAUTES.append(nom)
+    return f"{nom} a été ajouté à la liste des astronautes"
+
+
+# Remplace l'astronaute par ce nom
+@app.put("/api/astronautes/<int(min=1):numero>/<nom>")
+def renomme_astronaute(numero: int, nom: str):
+    if numero > len(ASTRONAUTES):
+        return f"L'astronaute N°{numero} n'existe pas"
+
+    ASTRONAUTES[numero - 1] = nom
+    return f"L'astronaute N°{numero} a été remplacé par {nom}"
+
+
+# Retire l'astronaute de la liste
+@app.delete("/api/astronautes/<int(min=1):numero>")
+def supprime_astronaute(numero: int):
+    if numero > len(ASTRONAUTES):
+        return f"L'astronaute N°{numero} n'existe pas"
+
+    ASTRONAUTES.pop(numero - 1)
+    return f"L'astronaute N°{numero} a été supprimé de la liste"

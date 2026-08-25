@@ -1,21 +1,20 @@
-# Annuaire des astronautes — Session 2 : routes et paramètres d'URL
+# Annuaire des astronautes — Session 3 : les méthodes HTTP
 
-Les routes ne sont plus figées : une partie du chemin devient une variable que
-Flask convertit avant d'appeler la fonction.
+Une même URL peut répondre différemment selon le verbe employé. La liste
+d'astronautes devient modifiable — en mémoire, le temps d'un lancement.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- Les convertisseurs `int`, `float`, `string`, `path`, et leurs options
-  (`min=`, `signed=`) : la validation la plus simple est celle que l'URL fait
-  elle-même, avant que le code ne s'exécute.
-- Le piège du slash final : `/astronautes` et `/astronautes/` ne sont pas la
-  même route.
-- `url_for` : on construit les liens à partir du **nom de la fonction**, jamais
-  en recopiant le chemin à la main — sinon renommer une route casse tous les
-  liens en silence.
+- La sémantique de `GET`, `POST`, `PUT`, `DELETE` : ce que chacun promet à
+  celui qui appelle (lire sans effet de bord, créer, remplacer, supprimer).
+- `404` contre `405` : chemin inconnu contre chemin connu sollicité avec le
+  mauvais verbe.
+- `curl` comme outil de test : le navigateur ne sait envoyer que des `GET`, il
+  ne suffit plus.
+- Les raccourcis `@app.get` / `@app.post` / `@app.put` / `@app.delete`.
 
 ## Lancer
 
@@ -27,13 +26,15 @@ pip install "flask>=3.1"
 flask --app app run --debug        # http://127.0.0.1:5000
 ```
 
-## Les routes ajoutées
+## Essayer
 
-| Chemin                                      | Démontre                          |
-|---------------------------------------------|-----------------------------------|
-| `/accueil-astronautes`                      | `url_for`                         |
-| `/astronautes/<numero>/lettre/<position>`   | deux paramètres dans un chemin    |
-| `/carre/<int:n>`                            | le convertisseur `int`            |
-| `/salut/<nom>`                              | le convertisseur par défaut       |
-| `/celsius/<float(signed=True):degres>`      | une option de convertisseur       |
-| `/recherche/<path:chemin>`                  | `path`, qui accepte les `/`       |
+```bash
+curl http://127.0.0.1:5000/api/astronautes
+curl -X POST http://127.0.0.1:5000/api/astronautes/Sally%20Ride
+curl -X PUT http://127.0.0.1:5000/api/astronautes/1/Buzz%20Aldrin
+curl -X DELETE http://127.0.0.1:5000/api/astronautes/1
+curl -X DELETE http://127.0.0.1:5000/astronautes      # 405, pas 404
+```
+
+Les modifications vivent dans une liste Python : tout repart à zéro au
+redémarrage du serveur.
