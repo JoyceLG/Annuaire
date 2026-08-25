@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, url_for
 from datetime import datetime
 
 ASTRONAUTES = [
@@ -49,3 +49,46 @@ def astronaute(numero: int):
         return f"Aucun astronaute numéro {numero}"
     return ASTRONAUTES[numero - 1]
 
+
+###################################
+# SESSION 2
+###################################
+
+
+@app.route("/accueil-astronautes")
+def accueil_astronautes():
+    lien = url_for("astronaute", numero=1)  # donne "/astronautes/1"
+    return f'<a href="{lien}">Le premier astronaute</a>'
+
+
+@app.route("/astronautes/<int:numero>/lettre/<int:position>")
+def lettre_astronaute(numero: int, position: int):
+    if numero < 1 or numero > len(ASTRONAUTES):
+        return f"Aucun astronaute numéro {numero}"
+    nom_astronaute = ASTRONAUTES[numero - 1]
+    if position < 1 or position > len(nom_astronaute):
+        return (
+            f"Aucune lettre à la position {position} pour l'astronaute numéro {numero}"
+        )
+    return nom_astronaute[position - 1]
+
+
+@app.route("/carre/<int:n>")
+def carre(n: int):
+    return f"Le carré de {n} est {n * n}"
+
+
+@app.route("/salut/<nom>")
+def message_perso(nom: str):
+    return f"Salut {nom} !"
+
+
+@app.route("/celsius/<float(signed=True):degres>")
+def celsius2fahrenheit(degres: float):
+    fahrenheit: float = (degres * 9 / 5) + 32
+    return f"Conversion {degres}°C est égale à {fahrenheit}°F"
+
+
+@app.route("/recherche/<path:chemin>")
+def recherche_chemin(chemin: str):
+    return chemin
