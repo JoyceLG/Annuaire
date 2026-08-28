@@ -1,20 +1,19 @@
-# Annuaire des astronautes — Session 3 : les méthodes HTTP
+# Annuaire des astronautes — Session 4 : recevoir des données
 
-Une même URL peut répondre différemment selon le verbe employé. La liste
-d'astronautes devient modifiable — en mémoire, le temps d'un lancement.
+Le client peut enfin envoyer autre chose qu'une URL. Chaque astronaute devient
+un dictionnaire `{nom, role, mission}` plutôt qu'une simple chaîne.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- La sémantique de `GET`, `POST`, `PUT`, `DELETE` : ce que chacun promet à
-  celui qui appelle (lire sans effet de bord, créer, remplacer, supprimer).
-- `404` contre `405` : chemin inconnu contre chemin connu sollicité avec le
-  mauvais verbe.
-- `curl` comme outil de test : le navigateur ne sait envoyer que des `GET`, il
-  ne suffit plus.
-- Les raccourcis `@app.get` / `@app.post` / `@app.put` / `@app.delete`.
+- Les trois endroits où une donnée peut arriver, et ce que chacun sert à dire :
+  le **chemin** (quelle ressource), la **query string** (comment la présenter :
+  filtre, tri, pagination), le **corps** (le contenu à créer ou modifier).
+- `request.args` pour la query string, `request.get_json()` pour le corps.
+- La route `/api/echo`, qui renvoie le détail de ce qu'elle a reçu : l'outil de
+  diagnostic le plus utile quand on doute de ce qui arrive vraiment.
 
 ## Lancer
 
@@ -29,12 +28,9 @@ flask --app app run --debug        # http://127.0.0.1:5000
 ## Essayer
 
 ```bash
-curl http://127.0.0.1:5000/api/astronautes
-curl -X POST http://127.0.0.1:5000/api/astronautes/Sally%20Ride
-curl -X PUT http://127.0.0.1:5000/api/astronautes/1/Buzz%20Aldrin
-curl -X DELETE http://127.0.0.1:5000/api/astronautes/1
-curl -X DELETE http://127.0.0.1:5000/astronautes      # 405, pas 404
+curl "http://127.0.0.1:5000/api/echo?a=1&b=2"
+curl -X POST http://127.0.0.1:5000/api/astronautes \
+     -H "Content-Type: application/json" \
+     -d '{"nom": "Sally Ride", "role": "specialiste", "mission": "STS-7"}'
+curl "http://127.0.0.1:5000/api/astronautes?role=commandant"
 ```
-
-Les modifications vivent dans une liste Python : tout repart à zéro au
-redémarrage du serveur.

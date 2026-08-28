@@ -1,139 +1,72 @@
-from flask import Flask, url_for
-from datetime import datetime
+from flask import Flask, request
 
 ASTRONAUTES = [
-    "Neil Armstrong",
-    "Alan Bean",
-    "Peter Conrad",
-    "Edgar Mitchell",
-    "Alan Shepard",
+    {"nom": "Neil Armstrong", "role": "commandant", "mission": "Apollo 11"},
+    {"nom": "Alan Bean", "role": "pilote", "mission": "Apollo 12"},
+    {"nom": "Peter Conrad", "role": "commandant", "mission": "Apollo 12"},
+    {"nom": "Edgar Mitchell", "role": "pilote", "mission": "Apollo 14"},
+    {"nom": "Alan Shepard", "role": "commandant", "mission": "Apollo 14"},
 ]
 
 app = Flask(__name__)
 
-###################################
-# SESSION 1
-###################################
-
-
-@app.route("/")
-def accueil():
-    return "Bonjour !"
-
-
-@app.route("/wip")
-def wip():
-    return " Work in progress !"
-
-
-@app.route("/apropos")
-def apropos():
-    return "<h1>À propos</h1><p>Ma première application Flask.</p>"
-
-
-@app.route("/date")
-def date():
-    maintenant = datetime.now()
-    return f"Date et heure actuelles : {maintenant:%d/%m/%Y à %H:%M:%S}"
-
-
-@app.route("/astronautes")
-def astronautes():
-    lignes = "".join(f"<li>{nom}</li>" for nom in ASTRONAUTES)
-    return f"<p>Astronautes d'Apollo&nbsp;:</p><ul>{lignes}</ul>"
-
-
-@app.route("/astronautes/<int:numero>")
-def astronaute(numero: int):
-    if numero < 1 or numero > len(ASTRONAUTES):
-        return f"Aucun astronaute numéro {numero}"
-    return ASTRONAUTES[numero - 1]
-
 
 ###################################
-# SESSION 2
+# SESSION 4
 ###################################
 
-
-@app.route("/accueil-astronautes")
-def accueil_astronautes():
-    lien = url_for("astronaute", numero=1)  # donne "/astronautes/1"
-    return f'<a href="{lien}">Le premier astronaute</a>'
-
-
-@app.route("/astronautes/<int:numero>/lettre/<int:position>")
-def lettre_astronaute(numero: int, position: int):
-    if numero < 1 or numero > len(ASTRONAUTES):
-        return f"Aucun astronaute numéro {numero}"
-    nom_astronaute = ASTRONAUTES[numero - 1]
-    if position < 1 or position > len(nom_astronaute):
-        return (
-            f"Aucune lettre à la position {position} pour l'astronaute numéro {numero}"
-        )
-    return nom_astronaute[position - 1]
-
-
-@app.route("/carre/<int:n>")
-def carre(n: int):
-    return f"Le carré de {n} est {n * n}"
-
-
-@app.route("/salut/<nom>")
-def message_perso(nom: str):
-    return f"Salut {nom} !"
-
-
-@app.route("/celsius/<float(signed=True):degres>")
-def celsius2fahrenheit(degres: float):
-    fahrenheit: float = (degres * 9 / 5) + 32
-    return f"Conversion {degres}°C est égale à {fahrenheit}°F"
-
-
-@app.route("/recherche/<path:chemin>")
-def recherche_chemin(chemin: str):
-    return chemin
-
-
-###################################
-# SESSION 3
-###################################
-
-
-@app.get("/mission")
-def lire_mission():
-    return "Mission : Apollo 11"
-
-
-@app.post("/mission")
-def demarrer_mission():
-    return "Mission démarrée !"
-
-
-@app.delete("/mission")
-def annuler_mission():
-    return "Mission annulée"
+@app.route("/api/echo", methods=["GET", "POST"])
+def echo():
+    lignes = [
+        f"Méthode : {request.method}",
+        f"Chemin : {request.path}",
+        f"Query string : {dict(request.args)}",
+        f"Content-Type : {request.headers.get('Content-Type')}",
+        f"Corps JSON : {request.get_json(silent=True)}",
+    ]
+    return "<br>".join(lignes)
 
 
 # Liste des noms, séparés par des virgules
+# Requete de test : curl "http://127.0.0.1:5000/api/astronautes?role=commandant&mission=Apollo%2011"
 @app.get("/api/astronautes")
 def liste_astronautes():
-    return "La liste des astronautes : " + ", ".join(ASTRONAUTES)
+    filtre_role = request.args.get("role")
+    filtre_mission = request.args.get("mission")
+    resultats = ASTRONAUTES
+    if filtre_role:
+        resultats = [n for n in resultats if filtre_role.lower() in n["role"].lower()]
+    if filtre_mission:
+        resultats = [n for n in resultats if filtre_mission.lower() in n["mission"].lower()]
+    return "Astronautes : " + ", ".join(n["nom"] for n in resultats)
 
 
 # Ajoute un astronaute à la liste
-@app.post("/api/astronautes/<nom>")
-def ajoute_astronaute(nom: str):
-    ASTRONAUTES.append(nom)
+# Requete de test : 
+# curl -X POST http://127.0.0.1:5000/api/astronautes -H "Content-Type: application/json" -d '{"nom": "Michel Colin", "role": "pilote", "mission": "Apollo 11"}'
+@app.post("/api/astronautes")
+def ajoute_astronaute():
+    donnees = request.get_json()
+    nom = donnees.get("nom")
+    role = donnees.get("role")
+    mission = donnees.get("mission")
+    nouvel_astronaute = {"nom": nom, "role": role, "mission": mission}
+    ASTRONAUTES.append(nouvel_astronaute)
     return f"{nom} a été ajouté à la liste des astronautes"
 
 
-# Remplace l'astronaute par ce nom
-@app.put("/api/astronautes/<int(min=1):numero>/<nom>")
-def renomme_astronaute(numero: int, nom: str):
+# Remplace l'astronaute
+# curl -X PUT http://127.0.0.1:5000/api/astronautes/6 -H "Content-Type: application/json" -d '{"nom": "Michael Collins", "role": "pilote", "mission": "Apollo 11"}'
+@app.put("/api/astronautes/<int(min=1):numero>")
+def remplace_astronaute(numero: int):
     if numero > len(ASTRONAUTES):
         return f"L'astronaute N°{numero} n'existe pas"
-
-    ASTRONAUTES[numero - 1] = nom
+    donnees = request.get_json()
+    nom = donnees.get("nom")
+    role = donnees.get("role")
+    mission = donnees.get("mission")
+    astronaute_remplacement = {"nom": nom, "role": role, "mission": mission}
+    ASTRONAUTES[numero - 1] = astronaute_remplacement
     return f"L'astronaute N°{numero} a été remplacé par {nom}"
 
 
