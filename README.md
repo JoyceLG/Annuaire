@@ -1,19 +1,21 @@
-# Annuaire des astronautes — Session 4 : recevoir des données
+# Annuaire des astronautes — Session 5 : répondre proprement
 
-Le client peut enfin envoyer autre chose qu'une URL. Chaque astronaute devient
-un dictionnaire `{nom, role, mission}` plutôt qu'une simple chaîne.
+L'API ne renvoie plus des phrases mais du JSON, avec le code de statut qui
+convient et les en-têtes attendus.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- Les trois endroits où une donnée peut arriver, et ce que chacun sert à dire :
-  le **chemin** (quelle ressource), la **query string** (comment la présenter :
-  filtre, tri, pagination), le **corps** (le contenu à créer ou modifier).
-- `request.args` pour la query string, `request.get_json()` pour le corps.
-- La route `/api/echo`, qui renvoie le détail de ce qu'elle a reçu : l'outil de
-  diagnostic le plus utile quand on doute de ce qui arrive vraiment.
+- Retourner un `dict` ou une `list` depuis une vue : Flask 2.2+ les sérialise
+  en JSON et pose le `Content-Type` tout seul.
+- Le code de statut fait partie de la réponse, au même titre que le corps :
+  `200` lire, `201` créer, `204` supprimer sans rien à dire, `400` demande
+  malformée, `404` ressource absente.
+- L'en-tête `Location` sur un `201` : la réponse indique **où** la ressource
+  créée est désormais joignable, construit avec `url_for`.
+- Une route `GET /api/astronautes/<numero>` pour lire une ressource seule.
 
 ## Lancer
 
@@ -28,9 +30,10 @@ flask --app app run --debug        # http://127.0.0.1:5000
 ## Essayer
 
 ```bash
-curl "http://127.0.0.1:5000/api/echo?a=1&b=2"
-curl -X POST http://127.0.0.1:5000/api/astronautes \
+curl -i -X POST http://127.0.0.1:5000/api/astronautes \
      -H "Content-Type: application/json" \
      -d '{"nom": "Sally Ride", "role": "specialiste", "mission": "STS-7"}'
-curl "http://127.0.0.1:5000/api/astronautes?role=commandant"
+# → 201, en-tête Location
+
+curl -i -X DELETE http://127.0.0.1:5000/api/astronautes/1    # → 204, corps vide
 ```
