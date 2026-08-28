@@ -1,21 +1,23 @@
-# Annuaire des astronautes — Session 5 : répondre proprement
+# Annuaire des astronautes — Session 6 : les identifiants
 
-L'API ne renvoie plus des phrases mais du JSON, avec le code de statut qui
-convient et les en-têtes attendus.
+Un astronaute n'est plus désigné par sa position dans la liste mais par un `id`
+stable, qui ne bouge plus quand un voisin disparaît.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- Retourner un `dict` ou une `list` depuis une vue : Flask 2.2+ les sérialise
-  en JSON et pose le `Content-Type` tout seul.
-- Le code de statut fait partie de la réponse, au même titre que le corps :
-  `200` lire, `201` créer, `204` supprimer sans rien à dire, `400` demande
-  malformée, `404` ressource absente.
-- L'en-tête `Location` sur un `201` : la réponse indique **où** la ressource
-  créée est désormais joignable, construit avec `url_for`.
-- Une route `GET /api/astronautes/<numero>` pour lire une ressource seule.
+- **Position n'est pas identité.** Avec un numéro de position, supprimer le
+  deuxième élément renomme silencieusement tous les suivants : l'URL d'une
+  ressource se met à désigner sa voisine. Corrigé par un `id` attribué à la
+  création et jamais réutilisé (`prochain_id`).
+- La fonction `trouver_astronaute(id)`, seul endroit qui sait comment on
+  retrouve un enregistrement.
+- `PUT` contre `PATCH` : remplacer tout l'objet, ou ne toucher qu'aux champs
+  fournis. Ce qui les sépare vraiment, c'est ce qu'ils font d'un champ
+  **absent** — `PUT` le remet à sa valeur par défaut, `PATCH` le laisse tel
+  quel.
 
 ## Lancer
 
@@ -30,10 +32,9 @@ flask --app app run --debug        # http://127.0.0.1:5000
 ## Essayer
 
 ```bash
-curl -i -X POST http://127.0.0.1:5000/api/astronautes \
-     -H "Content-Type: application/json" \
-     -d '{"nom": "Sally Ride", "role": "specialiste", "mission": "STS-7"}'
-# → 201, en-tête Location
+curl -X DELETE http://127.0.0.1:5000/api/astronautes/2
+curl http://127.0.0.1:5000/api/astronautes/3       # toujours Peter Conrad
 
-curl -i -X DELETE http://127.0.0.1:5000/api/astronautes/1    # → 204, corps vide
+curl -X PATCH http://127.0.0.1:5000/api/astronautes/3 \
+     -H "Content-Type: application/json" -d '{"role": "pilote"}'
 ```
