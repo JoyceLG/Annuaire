@@ -1,11 +1,12 @@
 import pytest
-import app as module_app
+from app import app
+import donnees
 
 
 # Tests pour l'application Flask des astronautes
 @pytest.fixture
 def client():
-    module_app.ASTRONAUTES[:] = [
+    donnees.ASTRONAUTES[:] = [
         {
             "id": 1,
             "nom": "Neil Armstrong",
@@ -15,8 +16,8 @@ def client():
         {"id": 2, "nom": "Alan Bean", "role": "pilote", "mission": "Apollo 12"},
         {"id": 3, "nom": "Peter Conrad", "role": "commandant", "mission": "Apollo 12"},
     ]
-    module_app.prochain_id = 4
-    return module_app.app.test_client()
+    donnees.prochain_id = 4
+    return app.test_client()
 
 
 # Url inexistante

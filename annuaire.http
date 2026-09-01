@@ -1,0 +1,46 @@
+@base = http://127.0.0.1:5000/api
+
+### Liste complète
+GET {{base}}/astronautes
+
+### Filtres combinés
+GET {{base}}/astronautes?role=commandant&mission=Apollo 12
+
+### Lire un astronaute
+GET {{base}}/astronautes/2
+
+### Astronaute inexistant → 404
+GET {{base}}/astronautes/999
+
+### Création valide → 201 + Location
+POST {{base}}/astronautes
+Content-Type: application/json
+
+{"nom": "Michael Collins", "role": "pilote", "mission": "Apollo 11"}
+
+### Création avec champ inconnu → 400
+POST {{base}}/astronautes
+Content-Type: application/json
+
+{"nom": "X", "role": "pilote", "mission": "Apollo 1", "salaire": 50000}
+
+### Remplacement complet
+PUT {{base}}/astronautes/2
+Content-Type: application/json
+
+{"nom": "Alan Bean", "role": "pilote", "mission": "Apollo 12"}
+
+### PUT incomplet → 400
+PUT {{base}}/astronautes/2
+Content-Type: application/json
+
+{"nom": "Alan Bean"}
+
+### Modification partielle
+PATCH {{base}}/astronautes/2
+Content-Type: application/json
+
+{"role": "commandant"}
+
+### Suppression → 204
+DELETE {{base}}/astronautes/2
