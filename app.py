@@ -8,29 +8,59 @@ ASTRONAUTES: list[dict[str, str | int]] = [
     {"id": 5, "nom": "Alan Shepard", "role": "commandant", "mission": "Apollo 14"},
 ]
 
+CHAMPS_ASTRONAUTE = ("nom", "role", "mission")
+ROLES_VALIDES = {"commandant", "pilote", "specialiste"}
+
 prochain_id = 6
 
 app = Flask(__name__)
 
 
 ###################################
-# SESSION 6
+# SESSION 7
 ###################################
 
 
 # Fonction de recherche par id
-def trouver_astronaute(id_astronaute: int) -> dict[str, int | str] | None:
+def trouver_astronaute(id_astronaute: int):
     for astronaute in ASTRONAUTES:
         if astronaute["id"] == id_astronaute:
             return astronaute
     return None
 
 
+# Fonction de validation des données d'entrée
+def valider_astronaute(donnees, partiel=False):
+    """Renvoie un dictionnaire d'erreurs, vide si tout est valide."""
+    erreurs = {}
+    
+    inconnus = set(donnees) - set(CHAMPS_ASTRONAUTE)
+    if inconnus:
+        erreurs["champs_inconnus"] = ", ".join(sorted(inconnus))
+        return erreurs      # inutile de valider des champs qu'on refuse
+
+    champs_verification = donnees if partiel else CHAMPS_ASTRONAUTE
+
+    for champ in champs_verification:
+        if champ not in donnees:
+            erreurs[champ] = "champ obligatoire manquant"
+        elif not isinstance(donnees[champ], str):
+            erreurs[champ] = "doit être une chaîne de caractères"
+        elif not donnees[champ].strip():
+            erreurs[champ] = "ne doit pas être vide"
+
+    if "role" in donnees:
+        if donnees["role"] not in ROLES_VALIDES:
+            erreurs["role"] = f"doit être l'un de : {', '.join(sorted(ROLES_VALIDES))}"
+
+    return erreurs
+
+
 # Renvoie le detail de la requete recue
 # Requete de test :
 # curl -i -X POST "http://127.0.0.1:5000/api/echo?ville=Houston" -H "Content-Type: application/json" -d '{"message": "ok"}'
 @app.route("/api/echo", methods=["GET", "POST"])
-def echo() -> dict[str, str | dict[str, str] | None]:
+def echo():
     return {
         "methode": request.method,
         "chemin": request.path,
@@ -69,16 +99,26 @@ def lire_astronaute(id_astronaute: int):
 
 # Ajoute un astronaute à la liste
 # Requete de test :
-# curl -i -X POST http://127.0.0.1:5000/api/astronautes -H "Content-Type: application/json" -d '{"nom": "Michel Colin", "role": "commandant", "mission": "Apollo 15"}'
+# POST invalide → 400 
+# curl -i -X POST http://127.0.0.1:5000/api/astronautes -H "Content-Type: application/json" -d '{"nom": "X", "role": "pilote", "mission": "Apollo 1", "salaire": 50000}'
 @app.post("/api/astronautes")
 def ajoute_astronaute():
+
     global prochain_id
-    donnees = request.get_json()
-    nouvel_astronaute: dict[str, int | str] = {
+
+    donnees = request.get_json(silent=True)
+    if not isinstance(donnees, dict):
+        return {"erreur": "Le corps doit être un objet JSON"}, 400
+
+    erreurs = valider_astronaute(donnees)
+    if erreurs:
+        return {"erreur": "Validation échouée", "details": erreurs}, 400
+
+    nouvel_astronaute = {
         "id": prochain_id,
-        "nom": donnees.get("nom"),
-        "role": donnees.get("role"),
-        "mission": donnees.get("mission"),
+        "nom": donnees["nom"],
+        "role": donnees["role"],
+        "mission": donnees["mission"],
     }
     prochain_id += 1
     ASTRONAUTES.append(nouvel_astronaute)
@@ -90,35 +130,56 @@ def ajoute_astronaute():
 
 
 # Remplace l'astronaute
-# Requete de test :
-# curl -i -X PUT http://127.0.0.1:5000/api/astronautes/6 -H "Content-Type: application/json" -d '{"nom": "Michael Collins", "role": "pilote", "mission": "Apollo 11"}'
+# Requetes de test :
+# PUT incomplet → 400 (alors que le PATCH équivalent passerait)
+# curl -i -X PUT http://127.0.0.1:5000/api/astronautes/2 -H "Content-Type: application/json" -d '{"nom": "Alan Bean"}'
+# Et le test final : plus aucun 500 possible
+# curl "http://127.0.0.1:5000/api/astronautes?role=pilote"
+
 @app.put("/api/astronautes/<int(min=1):id_astronaute>")
 def remplace_astronaute(id_astronaute: int):
+
     astronaute = trouver_astronaute(id_astronaute)
     if astronaute is None:
         return {"erreur": f"L'astronaute {id_astronaute} n'existe pas"}, 404
-    donnees = request.get_json()
-    astronaute["nom"] = donnees.get("nom")
-    astronaute["role"] = donnees.get("role")
-    astronaute["mission"] = donnees.get("mission")
+
+    donnees = request.get_json(silent=True)
+    if not isinstance(donnees, dict):
+        return {"erreur": "Le corps doit être un objet JSON"}, 400
+
+    erreurs = valider_astronaute(donnees)
+    if erreurs:
+        return {"erreur": "Validation échouée", "details": erreurs}, 400
+
+    astronaute["nom"] = donnees["nom"]
+    astronaute["role"] = donnees["role"]
+    astronaute["mission"] = donnees["mission"]
     return astronaute, 200
 
 
 # Modifie l'astronaute de la liste
-# Requete de test :
-# curl -X PATCH http://127.0.0.1:5000/api/astronautes/3 -H "Content-Type: application/json" -d '{"role": "pilote"}'
+# Requetes de test :
+# PATCH avec un rôle invalide → 400
+# curl -i -X PATCH http://127.0.0.1:5000/api/astronautes/2 -H "Content-Type: application/json" -d '{"role": "cosmonaute"}'
+# PATCH avec un seul champ valide → 200
+# curl -i -X PATCH http://127.0.0.1:5000/api/astronautes/2 -H "Content-Type: application/json" -d '{"role": "pilote"}'
 @app.patch("/api/astronautes/<int(min=1):id_astronaute>")
 def modifie_astronaute(id_astronaute: int):
-    
+
     astronaute = trouver_astronaute(id_astronaute)
-    
     if astronaute is None:
         return {"erreur": f"L'astronaute {id_astronaute} n'existe pas"}, 404
-    
-    donnees = request.get_json()
-    
+
+    donnees = request.get_json(silent=True)
+    if not isinstance(donnees, dict):
+        return {"erreur": "Le corps doit être un objet JSON"}, 400
+
     if not donnees:
         return {"erreur": "Rien à modifier"}, 400
+
+    erreurs = valider_astronaute(donnees, True)
+    if erreurs:
+        return {"erreur": "Validation échouée", "details": erreurs}, 400
 
     if "nom" in donnees:
         astronaute["nom"] = donnees["nom"]

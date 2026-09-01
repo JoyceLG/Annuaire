@@ -1,23 +1,21 @@
-# Annuaire des astronautes — Session 6 : les identifiants
+# Annuaire des astronautes — Session 7 : valider ce qui entre
 
-Un astronaute n'est plus désigné par sa position dans la liste mais par un `id`
-stable, qui ne bouge plus quand un voisin disparaît.
+Rien de ce qui vient du client n'est cru sur parole. Une seule fonction,
+`valider_astronaute`, tient toutes les règles.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- **Position n'est pas identité.** Avec un numéro de position, supprimer le
-  deuxième élément renomme silencieusement tous les suivants : l'URL d'une
-  ressource se met à désigner sa voisine. Corrigé par un `id` attribué à la
-  création et jamais réutilisé (`prochain_id`).
-- La fonction `trouver_astronaute(id)`, seul endroit qui sait comment on
-  retrouve un enregistrement.
-- `PUT` contre `PATCH` : remplacer tout l'objet, ou ne toucher qu'aux champs
-  fournis. Ce qui les sépare vraiment, c'est ce qu'ils font d'un champ
-  **absent** — `PUT` le remet à sa valeur par défaut, `PATCH` le laisse tel
-  quel.
+- Les quatre contrôles, dans cet ordre : champ **présent**, champ du bon
+  **type**, valeur dans l'ensemble **autorisé** (`ROLES_VALIDES`), et aucun
+  champ **inconnu** — refuser l'inattendu plutôt que l'ignorer, sans quoi une
+  faute de frappe dans un nom de champ passe inaperçue.
+- Le mode partiel, qui permet à `PATCH` de réutiliser exactement la même
+  fonction que `POST` et `PUT` sans dupliquer une règle.
+- Une erreur de validation renvoie **toutes** les fautes d'un coup, pas
+  seulement la première : un aller-retour par erreur, c'est une API pénible.
 
 ## Lancer
 
@@ -32,9 +30,8 @@ flask --app app run --debug        # http://127.0.0.1:5000
 ## Essayer
 
 ```bash
-curl -X DELETE http://127.0.0.1:5000/api/astronautes/2
-curl http://127.0.0.1:5000/api/astronautes/3       # toujours Peter Conrad
-
-curl -X PATCH http://127.0.0.1:5000/api/astronautes/3 \
-     -H "Content-Type: application/json" -d '{"role": "pilote"}'
+curl -i -X POST http://127.0.0.1:5000/api/astronautes \
+     -H "Content-Type: application/json" \
+     -d '{"nom": 42, "role": "cuisinier", "couleur": "bleu"}'
+# → 400, les trois problèmes signalés ensemble
 ```
