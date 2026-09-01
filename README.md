@@ -1,37 +1,33 @@
-# Annuaire des astronautes — Session 8 : gestion centralisée des erreurs
+# Annuaire des astronautes — Session 9 : tester son API
 
-Les vues ne fabriquent plus de réponses d'erreur. Elles lèvent une exception
-métier ; un gestionnaire unique la traduit en HTTP.
+22 tests pytest sur le client de test Flask. Ils tournent sans lancer de serveur
+et sans toucher au réseau.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- Des exceptions qui parlent du **domaine**, pas du web :
-  `AstronauteIntrouvable`, `DonneesInvalides`. Le code métier n'a pas à savoir
-  qu'un astronaute manquant vaut `404` — c'est une décision de la couche HTTP.
-- `@app.errorhandler` pour chaque cas, plus un filet pour `HTTPException`
-  (les erreurs levées par Flask lui-même) et un dernier pour `Exception`,
-  qui garantit qu'aucune trace Python ne fuit vers le client.
-- Un format d'erreur unique pour toute l'API : le client n'a qu'une seule
-  structure à savoir lire.
-- `lire_corps_json`, qui centralise la lecture du corps et sa validation.
+- Le client de test Flask : il appelle l'application directement en mémoire,
+  donc une suite complète tient en une poignée de secondes.
+- Les fixtures pytest, pour repartir d'un état propre à chaque test — sans
+  quoi les tests se contaminent l'un l'autre selon leur ordre d'exécution.
+- **Un test ne vaut que par ce qu'il serait capable de faire rougir.** Un test
+  qui passerait aussi avec du code faux ne teste rien : il faut choisir des
+  données qui distinguent réellement le bon comportement du mauvais.
 
 ## Lancer
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "flask>=3.1"
+pip install "flask>=3.1" pytest
 
+pytest -q                          # 22 tests
 flask --app app run --debug        # http://127.0.0.1:5000
 ```
 
-## Essayer
+## Fichiers
 
-```bash
-curl -i http://127.0.0.1:5000/api/astronautes/999      # 404, format JSON maison
-curl -i http://127.0.0.1:5000/chemin-inconnu           # 404, même format
-curl -i -X DELETE http://127.0.0.1:5000/api/astronautes # 405, même format
-```
+- `app.py` — l'application complète (données, validation, erreurs, routes)
+- `test_app.py` — la suite de tests
