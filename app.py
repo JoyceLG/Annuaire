@@ -1,4 +1,5 @@
 from flask import Flask, request, url_for
+from werkzeug.exceptions import HTTPException
 
 ASTRONAUTES: list[dict[str, str | int]] = [
     {"id": 1, "nom": "Neil Armstrong", "role": "commandant", "mission": "Apollo 11"},
@@ -17,8 +18,50 @@ app = Flask(__name__)
 
 
 ###################################
-# SESSION 7
+# SESSION 8
 ###################################
+
+
+class ErreurApi(Exception):
+    """Classe de base pour les erreurs métier."""
+
+
+class AstronauteIntrouvable(ErreurApi):
+    def __init__(self, id_astronaute: int):
+        self.id_astronaute = id_astronaute
+        super().__init__(f"L'astronaute {id_astronaute} n'existe pas")
+
+
+class DonneesInvalides(ErreurApi):
+    def __init__(self, details: dict):
+        self.details = details
+        super().__init__("Validation échouée")
+
+
+@app.errorhandler(404)
+def gerer_404(erreur):
+    return {"erreur": "Ressource introuvable"}, 404
+
+
+@app.errorhandler(HTTPException)
+def gerer_erreur_http(erreur):
+    return {"erreur": erreur.description}, erreur.code
+
+
+@app.errorhandler(AstronauteIntrouvable)
+def gerer_astronaute_introuvable(erreur):
+    return {"erreur": str(erreur)}, 404
+
+
+@app.errorhandler(DonneesInvalides)
+def gerer_donnees_invalides(erreur):
+    return {"erreur": str(erreur), "details": erreur.details}, 400
+
+
+@app.errorhandler(Exception)
+def gerer_erreur_inattendue(erreur):
+    app.logger.exception("Erreur non gérée")
+    return {"erreur": "Erreur interne du serveur"}, 500
 
 
 # Fonction de recherche par id
@@ -26,18 +69,18 @@ def trouver_astronaute(id_astronaute: int):
     for astronaute in ASTRONAUTES:
         if astronaute["id"] == id_astronaute:
             return astronaute
-    return None
+    raise AstronauteIntrouvable(id_astronaute)
 
 
 # Fonction de validation des données d'entrée
 def valider_astronaute(donnees, partiel=False):
     """Renvoie un dictionnaire d'erreurs, vide si tout est valide."""
     erreurs = {}
-    
+
     inconnus = set(donnees) - set(CHAMPS_ASTRONAUTE)
     if inconnus:
         erreurs["champs_inconnus"] = ", ".join(sorted(inconnus))
-        return erreurs      # inutile de valider des champs qu'on refuse
+        return erreurs  # inutile de valider des champs qu'on refuse
 
     champs_verification = donnees if partiel else CHAMPS_ASTRONAUTE
 
@@ -49,11 +92,26 @@ def valider_astronaute(donnees, partiel=False):
         elif not donnees[champ].strip():
             erreurs[champ] = "ne doit pas être vide"
 
-    if "role" in donnees:
+    if "role" in donnees and "role" not in erreurs:
         if donnees["role"] not in ROLES_VALIDES:
             erreurs["role"] = f"doit être l'un de : {', '.join(sorted(ROLES_VALIDES))}"
 
     return erreurs
+
+
+def lire_corps_json(partiel: bool = False) -> dict:
+    """Lit et valide le corps JSON, ou lève DonneesInvalides."""
+    
+    donnees = request.get_json(silent=True)
+    
+    if not isinstance(donnees, dict):
+        raise DonneesInvalides({"corps": "doit être un objet JSON"})
+
+    erreurs = valider_astronaute(donnees, partiel)
+    if erreurs:
+        raise DonneesInvalides(erreurs)
+    
+    return donnees
 
 
 # Renvoie le detail de la requete recue
@@ -92,34 +150,21 @@ def liste_astronautes():
 @app.get("/api/astronautes/<int(min=1):id_astronaute>")
 def lire_astronaute(id_astronaute: int):
     astronaute = trouver_astronaute(id_astronaute)
-    if astronaute is None:
-        return {"erreur": f"L'astronaute {id_astronaute} n'existe pas"}, 404
     return astronaute
 
 
 # Ajoute un astronaute à la liste
 # Requete de test :
-# POST invalide → 400 
+# curl -i -X POST http://127.0.0.1:5000/api/astronautes -H "Content-Type: application/json" -d '{"nom": "Michel Colin", "role": "commandant", "mission": "Apollo 15"}'
+# POST invalide → 400
 # curl -i -X POST http://127.0.0.1:5000/api/astronautes -H "Content-Type: application/json" -d '{"nom": "X", "role": "pilote", "mission": "Apollo 1", "salaire": 50000}'
 @app.post("/api/astronautes")
 def ajoute_astronaute():
 
     global prochain_id
 
-    donnees = request.get_json(silent=True)
-    if not isinstance(donnees, dict):
-        return {"erreur": "Le corps doit être un objet JSON"}, 400
-
-    erreurs = valider_astronaute(donnees)
-    if erreurs:
-        return {"erreur": "Validation échouée", "details": erreurs}, 400
-
-    nouvel_astronaute = {
-        "id": prochain_id,
-        "nom": donnees["nom"],
-        "role": donnees["role"],
-        "mission": donnees["mission"],
-    }
+    donnees = lire_corps_json()
+    nouvel_astronaute = {"id": prochain_id, **donnees}
     prochain_id += 1
     ASTRONAUTES.append(nouvel_astronaute)
     return (
@@ -131,29 +176,19 @@ def ajoute_astronaute():
 
 # Remplace l'astronaute
 # Requetes de test :
+# curl -i -X PUT http://127.0.0.1:5000/api/astronautes/6 -H "Content-Type: application/json" -d '{"nom": "Michael Collins", "role": "pilote", "mission": "Apollo 11"}'
 # PUT incomplet → 400 (alors que le PATCH équivalent passerait)
 # curl -i -X PUT http://127.0.0.1:5000/api/astronautes/2 -H "Content-Type: application/json" -d '{"nom": "Alan Bean"}'
-# Et le test final : plus aucun 500 possible
-# curl "http://127.0.0.1:5000/api/astronautes?role=pilote"
+
 
 @app.put("/api/astronautes/<int(min=1):id_astronaute>")
 def remplace_astronaute(id_astronaute: int):
 
     astronaute = trouver_astronaute(id_astronaute)
-    if astronaute is None:
-        return {"erreur": f"L'astronaute {id_astronaute} n'existe pas"}, 404
 
-    donnees = request.get_json(silent=True)
-    if not isinstance(donnees, dict):
-        return {"erreur": "Le corps doit être un objet JSON"}, 400
-
-    erreurs = valider_astronaute(donnees)
-    if erreurs:
-        return {"erreur": "Validation échouée", "details": erreurs}, 400
-
-    astronaute["nom"] = donnees["nom"]
-    astronaute["role"] = donnees["role"]
-    astronaute["mission"] = donnees["mission"]
+    donnees = lire_corps_json()
+    
+    astronaute.update(donnees)
     return astronaute, 200
 
 
@@ -167,26 +202,10 @@ def remplace_astronaute(id_astronaute: int):
 def modifie_astronaute(id_astronaute: int):
 
     astronaute = trouver_astronaute(id_astronaute)
-    if astronaute is None:
-        return {"erreur": f"L'astronaute {id_astronaute} n'existe pas"}, 404
 
-    donnees = request.get_json(silent=True)
-    if not isinstance(donnees, dict):
-        return {"erreur": "Le corps doit être un objet JSON"}, 400
-
-    if not donnees:
-        return {"erreur": "Rien à modifier"}, 400
-
-    erreurs = valider_astronaute(donnees, True)
-    if erreurs:
-        return {"erreur": "Validation échouée", "details": erreurs}, 400
-
-    if "nom" in donnees:
-        astronaute["nom"] = donnees["nom"]
-    if "role" in donnees:
-        astronaute["role"] = donnees["role"]
-    if "mission" in donnees:
-        astronaute["mission"] = donnees["mission"]
+    donnees = lire_corps_json(True)
+    
+    astronaute.update(donnees) 
 
     return astronaute, 200
 
@@ -197,7 +216,5 @@ def modifie_astronaute(id_astronaute: int):
 @app.delete("/api/astronautes/<int(min=1):id_astronaute>")
 def supprime_astronaute(id_astronaute: int):
     astronaute = trouver_astronaute(id_astronaute)
-    if astronaute is None:
-        return {"erreur": f"L'astronaute {id_astronaute} n'existe pas"}, 404
     ASTRONAUTES.remove(astronaute)
     return "", 204

@@ -1,21 +1,22 @@
-# Annuaire des astronautes — Session 7 : valider ce qui entre
+# Annuaire des astronautes — Session 8 : gestion centralisée des erreurs
 
-Rien de ce qui vient du client n'est cru sur parole. Une seule fonction,
-`valider_astronaute`, tient toutes les règles.
+Les vues ne fabriquent plus de réponses d'erreur. Elles lèvent une exception
+métier ; un gestionnaire unique la traduit en HTTP.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- Les quatre contrôles, dans cet ordre : champ **présent**, champ du bon
-  **type**, valeur dans l'ensemble **autorisé** (`ROLES_VALIDES`), et aucun
-  champ **inconnu** — refuser l'inattendu plutôt que l'ignorer, sans quoi une
-  faute de frappe dans un nom de champ passe inaperçue.
-- Le mode partiel, qui permet à `PATCH` de réutiliser exactement la même
-  fonction que `POST` et `PUT` sans dupliquer une règle.
-- Une erreur de validation renvoie **toutes** les fautes d'un coup, pas
-  seulement la première : un aller-retour par erreur, c'est une API pénible.
+- Des exceptions qui parlent du **domaine**, pas du web :
+  `AstronauteIntrouvable`, `DonneesInvalides`. Le code métier n'a pas à savoir
+  qu'un astronaute manquant vaut `404` — c'est une décision de la couche HTTP.
+- `@app.errorhandler` pour chaque cas, plus un filet pour `HTTPException`
+  (les erreurs levées par Flask lui-même) et un dernier pour `Exception`,
+  qui garantit qu'aucune trace Python ne fuit vers le client.
+- Un format d'erreur unique pour toute l'API : le client n'a qu'une seule
+  structure à savoir lire.
+- `lire_corps_json`, qui centralise la lecture du corps et sa validation.
 
 ## Lancer
 
@@ -30,8 +31,7 @@ flask --app app run --debug        # http://127.0.0.1:5000
 ## Essayer
 
 ```bash
-curl -i -X POST http://127.0.0.1:5000/api/astronautes \
-     -H "Content-Type: application/json" \
-     -d '{"nom": 42, "role": "cuisinier", "couleur": "bleu"}'
-# → 400, les trois problèmes signalés ensemble
+curl -i http://127.0.0.1:5000/api/astronautes/999      # 404, format JSON maison
+curl -i http://127.0.0.1:5000/chemin-inconnu           # 404, même format
+curl -i -X DELETE http://127.0.0.1:5000/api/astronautes # 405, même format
 ```
