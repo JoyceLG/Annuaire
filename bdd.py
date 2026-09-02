@@ -2,7 +2,5 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from modeles import Base
-
-engine = create_engine("sqlite:///astronautes.db", echo=False)
+engine = create_engine("sqlite:///astronautes.db", echo=True)
 FabriqueSession = sessionmaker(bind=engine)

@@ -1,26 +1,24 @@
-# Annuaire des astronautes — Session 12 : les migrations
+# Annuaire des astronautes — Session 13 : les relations
 
-Le schéma de la base a maintenant un historique, versionné à côté du code.
-Ajouter une colonne ne demande plus de détruire la base.
+Les missions deviennent une table à part entière. Un astronaute pointe vers sa
+mission par une clé étrangère.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- Alembic : chaque changement de schéma devient un fichier de révision, avec un
-  `upgrade()` et un `downgrade()`, appliqué dans l'ordre sur n'importe quelle
-  base.
-- **`create_all()` et Alembic ne cohabitent pas.** Laisser les deux en place
-  produit une base dont Alembic ignore l'état réel, et un « duplicate column »
-  à la première migration.
-- Les **migrations de données** : une nouvelle colonne `NOT NULL` sur une table
-  déjà peuplée ne se fait pas en une étape. Ajouter, remplir avec un `UPDATE`
-  en SQL brut, puis contraindre.
-- `server_default` : la valeur que la **base** donne aux lignes existantes, à
-  distinguer du `default` que Python applique aux nouvelles.
-- Une migration de données testée sur une base vide n'a jamais rien migré : il
-  faut la vérifier sur des lignes réelles.
+- La relation un-à-plusieurs : `ForeignKey`, `relationship`, `back_populates`.
+  La cohérence est garantie par la base, plus par la bonne volonté du code.
+- **Le problème N+1.** Lister 50 astronautes et lire `astronaute.mission.nom`
+  déclenche 51 requêtes SQL au lieu d'une. `selectinload` charge tout le lot
+  d'un coup.
+- Un test qui **compte les requêtes SQL** : c'est la seule façon d'empêcher le
+  N+1 de revenir sans que personne ne s'en aperçoive. Une régression de
+  performance ne fait échouer aucun test fonctionnel.
+- La migration en cinq temps sur une table déjà peuplée : créer la table
+  cible, la remplir depuis les valeurs existantes, ajouter la colonne de clé
+  étrangère, la renseigner, puis seulement la contraindre.
 
 ## Lancer
 
@@ -29,28 +27,22 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install "flask>=3.1" "sqlalchemy>=2.0" alembic pytest
 
-alembic upgrade head               # crée / met à jour la base
-python peupler.py                  # 5 astronautes Apollo
+alembic upgrade head
+python peupler.py                  # 3 missions, 5 astronautes
 flask --app app run --debug        # http://127.0.0.1:5000
-pytest -q                          # 24 tests
+pytest -q                          # 55 tests
 ```
 
-## Alembic au quotidien
+## Les routes
 
-```bash
-alembic current                                  # où en est la base
-alembic history                                  # les révisions connues
-alembic downgrade -1                             # revenir d'un cran
-alembic revision --autogenerate -m "message"     # après modification de modeles.py
-```
-
-## Attention aux deux URL
-
-L'URL de la base est écrite à **deux** endroits : `sqlalchemy.url` dans
-`alembic.ini` (migrations) et `create_engine(...)` dans `bdd.py` (application).
-Comme elle est relative, toutes les commandes doivent être lancées depuis la
-racine du dépôt — sinon chacune travaille sur une base différente.
+| Méthode | Chemin                                | |
+|---------|----------------------------------------|---|
+| `GET`   | `/api/astronautes`                     | liste, filtrable |
+| `GET`   | `/api/astronautes/<id>`                | une fiche |
+| `POST`  | `/api/astronautes`                     | création |
+| `PUT` / `PATCH` / `DELETE` | `/api/astronautes/<id>` | |
+| `GET`   | `/api/missions`                        | liste |
+| `GET`   | `/api/missions/<id>`                   | une mission |
+| `GET`   | `/api/missions/<id>/astronautes`       | l'équipage |
 
 Repartir de zéro : `rm astronautes.db && alembic upgrade head && python peupler.py`.
-Les tests, eux, créent une base temporaire : `pytest` ne touche jamais
-`astronautes.db`.

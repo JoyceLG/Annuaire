@@ -1,13 +1,16 @@
 from flask import Blueprint, request, url_for
 from session_web import session_bdd
 import donnees
-from erreurs import DonneesInvalides
+from erreurs import DonneesInvalides, MissionUtilisee
 import validation
 
 bp = Blueprint("astronautes", __name__, url_prefix="/api")
 
+class Tables:
+    ASTRONAUTE = "astronaute"
+    MISSION = "mission"
 
-def lire_corps_json(partiel: bool = False) -> dict:
+def lire_corps_json(type, partiel: bool = False) -> dict:
     """Lit et valide le corps JSON, ou lève DonneesInvalides."""
 
     donnees_entree = request.get_json(silent=True)
@@ -15,10 +18,16 @@ def lire_corps_json(partiel: bool = False) -> dict:
     if not isinstance(donnees_entree, dict):
         raise DonneesInvalides({"corps": "doit être un objet JSON"})
     
-    if partiel and not donnees_entree:
+    if not donnees_entree:
         raise DonneesInvalides({"corps": "ne peut pas être vide"})
 
-    erreurs = validation.valider_astronaute(donnees_entree, partiel)
+    if type == Tables.ASTRONAUTE:
+        erreurs = validation.valider_astronaute(donnees_entree, partiel)
+    elif type == Tables.MISSION:
+        erreurs = validation.valider_mission(donnees_entree, partiel)
+    else:
+        erreurs = {"type": "inconnu"}
+
     if erreurs:
         raise DonneesInvalides(erreurs)
 
@@ -50,7 +59,7 @@ def liste_astronautes():
     astronautes = donnees.lister_astronautes(
         bdd,
         role=request.args.get("role"),
-        mission=request.args.get("mission"),
+        mission_id=request.args.get("mission_id"),
     )
     return [a.en_dict() for a in astronautes]
 
@@ -59,7 +68,7 @@ def liste_astronautes():
 def ajoute_astronaute():
     """Ajoute un nouvel astronaute à la liste, et renvoie son en-tête Location."""
 
-    donnees_entree = lire_corps_json()
+    donnees_entree = lire_corps_json(Tables.ASTRONAUTE)
     bdd = session_bdd()
     nouvel_astronaute = donnees.creer_astronaute(bdd, donnees_entree)
     bdd.commit()
@@ -81,12 +90,11 @@ def remplace_astronaute(id_astronaute: int):
     bdd = session_bdd()
     astronaute = donnees.trouver_astronaute(bdd, id_astronaute)
 
-    donnees_entree = lire_corps_json()
+    donnees_entree = lire_corps_json(Tables.ASTRONAUTE)
 
-    astronaute.nom = donnees_entree["nom"]
-    astronaute.role = donnees_entree["role"]
-    astronaute.mission = donnees_entree["mission"]
-    astronaute.programme = donnees.calculer_programme(astronaute.mission)
+    for cle, valeur in donnees_entree.items():
+        setattr(astronaute, cle, valeur)
+    
     bdd.commit()
     return astronaute.en_dict(), 200
 
@@ -98,11 +106,10 @@ def modifie_astronaute(id_astronaute: int):
     bdd = session_bdd()
     astronaute = donnees.trouver_astronaute(bdd, id_astronaute)
 
-    donnees_entree = lire_corps_json(True)
+    donnees_entree = lire_corps_json(Tables.ASTRONAUTE, True)
     
     for cle, valeur in donnees_entree.items():
         setattr(astronaute, cle, valeur)
-    astronaute.programme = donnees.calculer_programme(astronaute.mission)
     bdd.commit()
     return astronaute.en_dict(), 200
 
@@ -115,5 +122,61 @@ def supprime_astronaute(id_astronaute: int):
     bdd = session_bdd()
     astronaute = donnees.trouver_astronaute(bdd, id_astronaute)
     donnees.supprimer_astronaute(bdd, astronaute)
+    bdd.commit()
+    return "", 204
+
+
+@bp.get("/missions/<int(min=1):id_mission>")
+def lire_mission(id_mission: int):
+    bdd = session_bdd()
+    return donnees.trouver_mission(bdd, id_mission).en_dict()
+
+
+@bp.get("/missions")
+def liste_missions():
+    bdd = session_bdd()
+    missions = donnees.lister_missions(
+        bdd,
+        programme=request.args.get("programme"),
+    )
+    return [m.en_dict() for m in missions]
+
+
+@bp.get("/missions/<int(min=1):id_mission>/astronautes")
+def liste_astronautes_mission(id_mission: int):
+    bdd = session_bdd()
+    mission = donnees.trouver_mission(bdd, id_mission)
+    return [a.en_dict() for a in mission.astronautes]
+
+
+@bp.post("/missions")
+def ajoute_mission():
+    """Ajoute une nouvelle mission à la liste, et renvoie son en-tête Location."""
+
+    donnees_entree = lire_corps_json(Tables.MISSION)
+    bdd = session_bdd()
+    nouvelle_mission = donnees.creer_mission(bdd, donnees_entree)
+    bdd.commit()
+
+    return (
+        nouvelle_mission.en_dict(),
+        201,
+        {
+            "Location": url_for(
+                "astronautes.lire_mission", id_mission=nouvelle_mission.id
+            )
+        },
+    )
+
+
+@bp.delete("/missions/<int(min=1):id_mission>")
+def supprime_mission(id_mission: int):
+    """Supprime une mission de la liste (204 sans corps)."""
+
+    bdd = session_bdd()
+    mission = donnees.trouver_mission(bdd, id_mission)
+    if donnees.lister_astronautes(bdd, mission_id=id_mission):
+        raise MissionUtilisee(mission.id)
+    donnees.supprimer_mission(bdd, mission)
     bdd.commit()
     return "", 204

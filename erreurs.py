@@ -12,3 +12,21 @@ class DonneesInvalides(ErreurApi):
     def __init__(self, details: dict):
         self.details = details
         super().__init__("Validation échouée")
+
+
+class MissionIntrouvable(ErreurApi):
+    def __init__(self, mission):
+        self.mission = mission
+        super().__init__(f"La mission {mission} n'existe pas")
+
+
+class MissionDejaExistante(ErreurApi):
+    def __init__(self, id_mission: int):
+        self.id_mission = id_mission
+        super().__init__(f"La mission {id_mission} existe déjà")
+        
+
+class MissionUtilisee(ErreurApi):
+    def __init__(self, id_mission: int):
+        self.id_mission = id_mission
+        super().__init__(f"La mission {id_mission} est utilisée par des astronautes et ne peut pas être supprimée")

@@ -1,46 +1,207 @@
 @base = http://127.0.0.1:5000/api
 
+### Jeu de données de départ, après `python peupler.py` sur une base neuve :
+###   missions      1 Apollo 11 (1969) · 2 Apollo 12 (1969) · 3 Apollo 14 (1971)
+###   astronautes   1 Armstrong · 2 Bean · 3 Conrad · 4 Mitchell · 5 Shepard
+### Les créations et suppressions sont regroupées en fin de section, pour que
+### les lectures restent jouables dans l'ordre. Pour repartir de ces
+### identifiants : rm astronautes.db && alembic upgrade head && python peupler.py
+
+
+### ========================= ASTRONAUTES =========================
+
 ### Liste complète
 GET {{base}}/astronautes
 
+### Filtre par rôle
+GET {{base}}/astronautes?role=commandant
+
+### Filtre par mission (sur le nom de la mission, recherche partielle)
+GET {{base}}/astronautes?mission_id=2
+
 ### Filtres combinés
-GET {{base}}/astronautes?role=commandant&mission=Apollo 12
+GET {{base}}/astronautes?role=commandant&mission_id=2
+
+### Filtre sans résultat → 200 et tableau vide
+GET {{base}}/astronautes?mission_id=Soyouz
+
+### Filtre avec mission_id en string → 400 
+GET {{base}}/astronautes?mission_id=Soyouz
 
 ### Lire un astronaute
-GET {{base}}/astronautes/2
+GET {{base}}/astronautes/1
 
 ### Astronaute inexistant → 404
 GET {{base}}/astronautes/999
 
+### Identifiant 0 → 404 (refusé par le convertisseur <int(min=1)>)
+GET {{base}}/astronautes/0
+
 ### Création valide → 201 + Location
+### `mission` est l'identifiant de la mission, en chaîne de caractères.
 POST {{base}}/astronautes
 Content-Type: application/json
 
-{"nom": "Michael Collins", "role": "pilote", "mission": "Apollo 11"}
+{"nom": "Michael Collins", "role": "pilote", "mission_id": 1, "nationalite": "Etats-Unis"}
 
-### Création avec champ inconnu → 400
+### Création avec une mission inexistante → 404
 POST {{base}}/astronautes
 Content-Type: application/json
 
-{"nom": "X", "role": "pilote", "mission": "Apollo 1", "salaire": 50000}
+{"nom": "Michael Collins", "role": "pilote", "mission_id": 999, "nationalite": "Etats-Unis"}
 
-### Remplacement complet
+### Création avec un nom de mission au lieu de son id → 400
+POST {{base}}/astronautes
+Content-Type: application/json
+
+{"nom": "Michael Collins", "role": "pilote", "mission_id": "Apollo 14", "nationalite": "Etats-Unis"}
+
+### Création avec un rôle invalide → 400
+POST {{base}}/astronautes
+Content-Type: application/json
+
+{"nom": "Michael Collins", "role": "cosmonaute", "mission_id": "1", "nationalite": "Etats-Unis"}
+
+### Création avec un champ manquant → 400
+POST {{base}}/astronautes
+Content-Type: application/json
+
+{"nom": "Michael Collins", "role": "pilote", "mission_id": "1"}
+
+### Création avec un champ inconnu → 400
+POST {{base}}/astronautes
+Content-Type: application/json
+
+{"nom": "X", "role": "pilote", "mission_id": "1", "nationalite": "Etats-Unis", "salaire": 50000}
+
+### Corps vide → 400
+POST {{base}}/astronautes
+Content-Type: application/json
+
+{}
+
+### JSON mal formé → 400
+POST {{base}}/astronautes
+Content-Type: application/json
+
+{invalide}
+
+### Remplacement complet → 200
 PUT {{base}}/astronautes/2
 Content-Type: application/json
 
-{"nom": "Alan Bean", "role": "commandant", "mission": "Apollo 12"}
+{"nom": "Alan Bean", "role": "commandant", "mission_id": "2", "nationalite": "Etats-Unis"}
 
-### PUT incomplet → 400
+### PUT incomplet → 400 (tous les champs sont requis)
 PUT {{base}}/astronautes/2
 Content-Type: application/json
 
 {"nom": "Alan Bean"}
 
-### Modification partielle
+### Modification partielle → 200
 PATCH {{base}}/astronautes/3
 Content-Type: application/json
 
 {"role": "pilote"}
 
+### Changement de mission → 200
+PATCH {{base}}/astronautes/3
+Content-Type: application/json
+
+{"mission_id": "3"}
+
+### PATCH avec corps vide → 400
+PATCH {{base}}/astronautes/3
+Content-Type: application/json
+
+{}
+
 ### Suppression → 204
-DELETE {{base}}/astronautes/2
+DELETE {{base}}/astronautes/5
+
+### Suppression d'un inexistant → 404
+DELETE {{base}}/astronautes/999
+
+
+### ========================== MISSIONS ===========================
+
+### Liste complète
+GET {{base}}/missions
+
+### Filtre par programme (recherche partielle)
+GET {{base}}/missions?programme=Apollo
+
+### Filtre sans résultat → 200 et tableau vide
+GET {{base}}/missions?programme=Gemini
+
+### Lire une mission
+GET {{base}}/missions/2
+
+### Mission inexistante → 404
+GET {{base}}/missions/999
+
+### Équipage d'une mission
+GET {{base}}/missions/2/astronautes
+
+### Équipage d'une mission inexistante → 404
+GET {{base}}/missions/999/astronautes
+
+### Création valide → 201 + Location
+POST {{base}}/missions
+Content-Type: application/json
+
+{"nom": "Apollo 13", "annee": 1970}
+
+### Création avec un programme fourni → 400 (champ déduit, donc inconnu)
+POST {{base}}/missions
+Content-Type: application/json
+
+{"nom": "Gemini 4", "programme": "Gemini", "annee": 1965}
+
+### Création avec une année en chaîne → 400
+POST {{base}}/missions
+Content-Type: application/json
+
+{"nom": "Gemini 4", "annee": "1965"}
+
+### Création avec une année en booléen → 400
+POST {{base}}/missions
+Content-Type: application/json
+
+{"nom": "Gemini 4", "annee": true}
+
+### Création avec un nom déjà pris → 409
+POST {{base}}/missions
+Content-Type: application/json
+
+{"nom": "Apollo 11", "annee": 1969}
+
+### Création avec un champ manquant → 400
+POST {{base}}/missions
+Content-Type: application/json
+
+{"nom": "Gemini 4"}
+
+### Création avec un champ inconnu → 400
+POST {{base}}/missions
+Content-Type: application/json
+
+{"nom": "Gemini 4", "annee": 1965, "cout": 500000000}
+
+### PUT et PATCH ne sont pas exposés sur les missions → 405
+PUT {{base}}/missions/2
+Content-Type: application/json
+
+{"nom": "Apollo 12", "annee": 1970}
+
+### Suppression d'une mission sans équipage → 204
+### (Apollo 13, créée plus haut ; ajuster l'id si la base a déjà servi)
+DELETE {{base}}/missions/4
+
+### Suppression d'une mission inexistante → 404
+DELETE {{base}}/missions/999
+
+### Suppression d'une mission qui a encore un équipage → 500
+### Bug connu : mission_id est NOT NULL, le détachement échoue.
+### Voir test_suppression_mission_avec_equipage (xfail) dans test_app.py.
+DELETE {{base}}/missions/2

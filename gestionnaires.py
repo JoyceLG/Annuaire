@@ -1,5 +1,11 @@
 from werkzeug.exceptions import HTTPException
-from erreurs import AstronauteIntrouvable, DonneesInvalides
+from erreurs import (
+    AstronauteIntrouvable,
+    DonneesInvalides,
+    MissionDejaExistante,
+    MissionIntrouvable,
+    MissionUtilisee,
+)
 
 
 def enregistrer_gestionnaires(app):
@@ -23,10 +29,22 @@ def enregistrer_gestionnaires(app):
     @app.errorhandler(AstronauteIntrouvable)
     def gerer_astronaute_introuvable(erreur):
         return {"erreur": str(erreur)}, 404
+    
+    @app.errorhandler(MissionIntrouvable)
+    def gerer_mission_introuvable(erreur):
+        return {"erreur": str(erreur)}, 404
+
+    @app.errorhandler(MissionDejaExistante)
+    def gerer_mission_deja_existante(erreur):
+        return {"erreur": str(erreur)}, 409
 
     @app.errorhandler(DonneesInvalides)
     def gerer_donnees_invalides(erreur):
         return {"erreur": str(erreur), "details": erreur.details}, 400
+    
+    @app.errorhandler(MissionUtilisee)
+    def gerer_mission_utilisee(erreur):
+        return {"erreur": str(erreur)}, 409
 
     @app.errorhandler(Exception)
     def gerer_erreur_inattendue(erreur):

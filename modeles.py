@@ -1,10 +1,29 @@
 # modeles.py
-from sqlalchemy import String
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import ForeignKey, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
     """Classe de base commune à tous les modèles."""
+
+
+class Mission(Base):
+    __tablename__ = "missions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nom: Mapped[str] = mapped_column(String(50), unique=True)
+    programme: Mapped[str] = mapped_column(String(50))
+    annee: Mapped[int]
+
+    astronautes: Mapped[list["Astronaute"]] = relationship(back_populates="mission")
+
+    def en_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "nom": self.nom,
+            "programme": self.programme,
+            "annee": self.annee,
+        }
 
 
 class Astronaute(Base):
@@ -13,17 +32,16 @@ class Astronaute(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     nom: Mapped[str] = mapped_column(String(100))
     role: Mapped[str] = mapped_column(String(50))
-    mission: Mapped[str] = mapped_column(String(50))
     nationalite: Mapped[str] = mapped_column(String(50))
-    programme: Mapped[str] = mapped_column(String(50))
-    
+
+    mission_id: Mapped[int] = mapped_column(ForeignKey("missions.id"))
+    mission: Mapped["Mission"] = relationship(back_populates="astronautes")
 
     def en_dict(self) -> dict:
-        return {
+        return {lllll
             "id": self.id,
             "nom": self.nom,
             "role": self.role,
-            "mission": self.mission,
             "nationalite": self.nationalite,
-            "programme": self.programme,
+            "mission_id": self.mission.id,
         }
