@@ -1,35 +1,31 @@
+# donnees.py
+from sqlalchemy import select
+
 from erreurs import AstronauteIntrouvable
+from modeles import Astronaute
 
-ASTRONAUTES = [
-    {"id": 1, "nom": "Neil Armstrong", "role": "commandant", "mission": "Apollo 11"},
-    {"id": 2, "nom": "Alan Bean", "role": "pilote", "mission": "Apollo 12"},
-    {"id": 3, "nom": "Peter Conrad", "role": "commandant", "mission": "Apollo 12"},
-    {"id": 4, "nom": "Edgar Mitchell", "role": "pilote", "mission": "Apollo 14"},
-    {"id": 5, "nom": "Alan Shepard", "role": "commandant", "mission": "Apollo 14"},
-]
 
-prochain_id = 6
+def trouver_astronaute(bdd, id_astronaute: int) -> Astronaute:
+    astronaute = bdd.get(Astronaute, id_astronaute)
+    if astronaute is None:
+        raise AstronauteIntrouvable(id_astronaute)
+    return astronaute
 
-def trouver_astronaute(id_astronaute: int):
-    """
-    Trouve un astronaute par son identifiant.
 
-    Parameters
-    ----------
-    id_astronaute : int
-        Identifiant de l'astronaute à rechercher.
+def lister_astronautes(bdd, role=None, mission=None) -> list[Astronaute]:
+    requete = select(Astronaute)
+    if role:
+        requete = requete.where(Astronaute.role.ilike(f"%{role}%"))
+    if mission:
+        requete = requete.where(Astronaute.mission.ilike(f"%{mission}%"))
+    return list(bdd.scalars(requete).all())
 
-    Returns
-    -------
-    dict
-        Dictionnaire représentant l'astronaute trouvé.
 
-    Raises
-    ------
-    AstronauteIntrouvable
-        Si aucun astronaute avec l'identifiant donné n'est trouvé.
-    """
-    for astronaute in ASTRONAUTES:
-        if astronaute["id"] == id_astronaute:
-            return astronaute
-    raise AstronauteIntrouvable(id_astronaute)
+def creer_astronaute(bdd, champs: dict) -> Astronaute:
+    astronaute = Astronaute(**champs)
+    bdd.add(astronaute)
+    return astronaute
+
+
+def supprimer_astronaute(bdd, astronaute: Astronaute) -> None:
+    bdd.delete(astronaute)

@@ -28,7 +28,7 @@ Content-Type: application/json
 PUT {{base}}/astronautes/2
 Content-Type: application/json
 
-{"nom": "Alan Bean", "role": "pilote", "mission": "Apollo 12"}
+{"nom": "Alan Bean", "role": "commandant", "mission": "Apollo 12"}
 
 ### PUT incomplet → 400
 PUT {{base}}/astronautes/2
@@ -37,10 +37,10 @@ Content-Type: application/json
 {"nom": "Alan Bean"}
 
 ### Modification partielle
-PATCH {{base}}/astronautes/2
+PATCH {{base}}/astronautes/3
 Content-Type: application/json
 
-{"role": "commandant"}
+{"role": "pilote"}
 
 ### Suppression → 204
 DELETE {{base}}/astronautes/2

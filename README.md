@@ -1,44 +1,50 @@
-# Annuaire des astronautes — Session 10 : organiser son code
+# Annuaire des astronautes — Session 11 : une vraie base de données
 
-Le fichier unique de 230 lignes éclate en modules. `app.py` ne fait plus
-qu'assembler les morceaux.
+Les données ne vivent plus dans une liste Python. SQLAlchemy 2.0 les range dans
+un fichier SQLite qui survit au redémarrage.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- Les **Blueprints** : un groupe de routes déclaré ailleurs, enregistré sur
-  l'application avec son préfixe d'URL.
-- **Les imports ne vont que dans un sens.** `routes` importe `donnees`, jamais
-  l'inverse. Un import circulaire n'est pas un accident, c'est le signe que la
-  responsabilité est mal placée.
-- **Aucun `import flask` dans les modules métier.** `donnees.py` et
-  `validation.py` ignorent qu'il existe un web : ils seraient réutilisables
-  depuis un script ou une tâche planifiée.
-- Le refactoring a été fait *après* les tests de la session 9, et pas avant :
-  le filet existait déjà quand on a tout déplacé.
+- Le style déclaratif moderne : `DeclarativeBase`, `Mapped`, `mapped_column`.
+- **Engine contre Session.** L'Engine est le pool de connexions, créé une fois
+  pour toute la vie du processus ; la Session est l'espace de travail d'une
+  requête, créé et refermé à chaque fois. Les confondre, c'est partager un
+  cache d'objets entre deux clients.
+- `teardown_appcontext` : Flask referme la session à la fin de la requête,
+  y compris quand une exception est passée par là.
+- **La session est passée en paramètre** aux fonctions de `donnees.py`, jamais
+  importée depuis un global : c'est ce qui permettra aux tests de leur donner
+  une base jetable.
 
 ## Lancer
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "flask>=3.1" pytest
+pip install "flask>=3.1" "sqlalchemy>=2.0" pytest
 
-pytest -q                          # 22 tests
+python peupler.py                  # crée les tables et insère 5 astronautes
 flask --app app run --debug        # http://127.0.0.1:5000
+pytest -q                          # 23 tests
 ```
+
+Repartir de zéro : `rm astronautes.db && python peupler.py`.
 
 ## Organisation
 
 ```
-app.py            assemblage : Flask(), gestionnaires, blueprint
-routes.py         le blueprint et ses vues — la seule couche qui parle HTTP
-donnees.py        la liste en mémoire et les opérations dessus
-validation.py     les règles de validation
-erreurs.py        les exceptions métier
-gestionnaires.py  exception métier → réponse HTTP
-annuaire.http     requêtes prêtes à jouer (extension REST Client de VS Code)
+app.py            assemblage
+bdd.py            l'Engine et la fabrique de sessions
+modeles.py        Astronaute, en table
+session_web.py    la session liée à la requête Flask
+peupler.py        crée les tables et insère les données de départ
+routes.py         les vues
+donnees.py        les requêtes SQLAlchemy, sans Flask
+validation.py / erreurs.py / gestionnaires.py
 test_app.py       la suite de tests
 ```
+
+Le fichier `astronautes.db` n'est pas versionné : il se reconstruit.

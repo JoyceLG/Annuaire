@@ -1,4 +1,5 @@
 from flask import Blueprint, request, url_for
+from session_web import session_bdd
 import donnees
 from erreurs import DonneesInvalides
 import validation
@@ -13,6 +14,9 @@ def lire_corps_json(partiel: bool = False) -> dict:
 
     if not isinstance(donnees_entree, dict):
         raise DonneesInvalides({"corps": "doit être un objet JSON"})
+    
+    if partiel and not donnees_entree:
+        raise DonneesInvalides({"corps": "ne peut pas être vide"})
 
     erreurs = validation.valider_astronaute(donnees_entree, partiel)
     if erreurs:
@@ -20,22 +24,6 @@ def lire_corps_json(partiel: bool = False) -> dict:
 
     return donnees_entree
 
-
-@bp.get("/astronautes")
-def liste_astronautes():
-    """Liste les astronautes, éventuellement filtrés par rôle et mission."""
-
-    filtre_role = request.args.get("role")
-    filtre_mission = request.args.get("mission")
-    resultats = donnees.ASTRONAUTES
-    if filtre_role:
-        resultats = [n for n in resultats if filtre_role.lower() in n["role"].lower()]
-    if filtre_mission:
-        resultats = [
-            n for n in resultats if filtre_mission.lower() in n["mission"].lower()
-        ]
-
-    return resultats
 
 
 @bp.route("/echo", methods=["GET", "POST"])
@@ -52,8 +40,19 @@ def echo():
 
 @bp.get("/astronautes/<int(min=1):id_astronaute>")
 def lire_astronaute(id_astronaute: int):
-    """Renvoie les informations d'un astronaute donné."""
-    return donnees.trouver_astronaute(id_astronaute)
+    bdd = session_bdd()
+    return donnees.trouver_astronaute(bdd, id_astronaute).en_dict()
+
+
+@bp.get("/astronautes")
+def liste_astronautes():
+    bdd = session_bdd()
+    astronautes = donnees.lister_astronautes(
+        bdd,
+        role=request.args.get("role"),
+        mission=request.args.get("mission"),
+    )
+    return [a.en_dict() for a in astronautes]
 
 
 @bp.post("/astronautes")
@@ -61,15 +60,15 @@ def ajoute_astronaute():
     """Ajoute un nouvel astronaute à la liste, et renvoie son en-tête Location."""
 
     donnees_entree = lire_corps_json()
-    nouvel_astronaute = {"id": donnees.prochain_id, **donnees_entree}
-    donnees.prochain_id += 1
-    donnees.ASTRONAUTES.append(nouvel_astronaute)
+    bdd = session_bdd()
+    nouvel_astronaute = donnees.creer_astronaute(bdd, donnees_entree)
+    bdd.commit()
     return (
-        nouvel_astronaute,
+        nouvel_astronaute.en_dict(),
         201,
         {
             "Location": url_for(
-                "astronautes.lire_astronaute", id_astronaute=nouvel_astronaute["id"]
+                "astronautes.lire_astronaute", id_astronaute=nouvel_astronaute.id
             )
         },
     )
@@ -79,31 +78,40 @@ def ajoute_astronaute():
 def remplace_astronaute(id_astronaute: int):
     """Remplace les informations d'un astronaute donné."""
 
-    astronaute = donnees.trouver_astronaute(id_astronaute)
+    bdd = session_bdd()
+    astronaute = donnees.trouver_astronaute(bdd, id_astronaute)
 
     donnees_entree = lire_corps_json()
 
-    astronaute.update(donnees_entree)
-    return astronaute, 200
+    astronaute.nom = donnees_entree["nom"]
+    astronaute.role = donnees_entree["role"]
+    astronaute.mission = donnees_entree["mission"]
+    bdd.commit()
+    return astronaute.en_dict(), 200
 
 
 @bp.patch("/astronautes/<int(min=1):id_astronaute>")
 def modifie_astronaute(id_astronaute: int):
     """Modifie partiellement les informations d'un astronaute donné."""
 
-    astronaute = donnees.trouver_astronaute(id_astronaute)
+    bdd = session_bdd()
+    astronaute = donnees.trouver_astronaute(bdd, id_astronaute)
 
     donnees_entree = lire_corps_json(True)
-
-    astronaute.update(donnees_entree)
-
-    return astronaute, 200
+    
+    for cle, valeur in donnees_entree.items():
+        setattr(astronaute, cle, valeur)
+    bdd.commit()
+    return astronaute.en_dict(), 200
 
 
 @bp.delete("/astronautes/<int(min=1):id_astronaute>")
 def supprime_astronaute(id_astronaute: int):
     """Supprime un astronaute de la liste (204 sans corps)."""
 
-    astronaute = donnees.trouver_astronaute(id_astronaute)
-    donnees.ASTRONAUTES.remove(astronaute)
+
+    bdd = session_bdd()
+    astronaute = donnees.trouver_astronaute(bdd, id_astronaute)
+    donnees.supprimer_astronaute(bdd, astronaute)
+    bdd.commit()
     return "", 204

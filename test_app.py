@@ -1,24 +1,27 @@
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+import bdd
 from app import app
-import donnees
+from modeles import Astronaute, Base
 
 
-# Tests pour l'application Flask des astronautes
 @pytest.fixture
-def client():
-    donnees.ASTRONAUTES[:] = [
-        {
-            "id": 1,
-            "nom": "Neil Armstrong",
-            "role": "commandant",
-            "mission": "Apollo 11",
-        },
-        {"id": 2, "nom": "Alan Bean", "role": "pilote", "mission": "Apollo 12"},
-        {"id": 3, "nom": "Peter Conrad", "role": "commandant", "mission": "Apollo 12"},
-    ]
-    donnees.prochain_id = 4
-    return app.test_client()
+def client(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path}/test.db")
+    bdd.FabriqueSession = sessionmaker(bind=engine)
+    Base.metadata.create_all(engine)
 
+    with bdd.FabriqueSession() as session:
+        session.add_all([
+            Astronaute(nom="Neil Armstrong", role="commandant", mission="Apollo 11"),
+            Astronaute(nom="Alan Bean", role="pilote", mission="Apollo 12"),
+            Astronaute(nom="Peter Conrad", role="commandant", mission="Apollo 12"),
+        ])
+        session.commit()
+
+    return app.test_client()
 
 # Url inexistante
 def test_url_inexistante_renvoie_du_json(client):
@@ -190,6 +193,12 @@ def test_patch_modifie_avec_role_invalide(client):
     reponse = client.patch(
         "/api/astronautes/1", json={"nom": "Modifié", "role": "cosmonaute"}
     )
+    assert reponse.status_code == 400
+
+
+# PATCH avec corps vide : 400
+def test_patch_corps_vide_renvoie_400(client):
+    reponse = client.patch("/api/astronautes/1", json={})
     assert reponse.status_code == 400
 
 
