@@ -1,4 +1,4 @@
-CHAMPS_ASTRONAUTE = ("nom", "role", "mission")
+CHAMPS_ASTRONAUTE = ("nom", "role", "mission", "nationalite")
 ROLES_VALIDES = {"commandant", "pilote", "specialiste"}
 
 

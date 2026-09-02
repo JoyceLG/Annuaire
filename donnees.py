@@ -21,8 +21,12 @@ def lister_astronautes(bdd, role=None, mission=None) -> list[Astronaute]:
     return list(bdd.scalars(requete).all())
 
 
+def calculer_programme(mission: str) -> str:
+    return mission.split()[0]
+
+
 def creer_astronaute(bdd, champs: dict) -> Astronaute:
-    astronaute = Astronaute(**champs)
+    astronaute = Astronaute(**champs, programme=calculer_programme(champs["mission"]))
     bdd.add(astronaute)
     return astronaute
 

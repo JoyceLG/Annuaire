@@ -86,6 +86,7 @@ def remplace_astronaute(id_astronaute: int):
     astronaute.nom = donnees_entree["nom"]
     astronaute.role = donnees_entree["role"]
     astronaute.mission = donnees_entree["mission"]
+    astronaute.programme = donnees.calculer_programme(astronaute.mission)
     bdd.commit()
     return astronaute.en_dict(), 200
 
@@ -101,6 +102,7 @@ def modifie_astronaute(id_astronaute: int):
     
     for cle, valeur in donnees_entree.items():
         setattr(astronaute, cle, valeur)
+    astronaute.programme = donnees.calculer_programme(astronaute.mission)
     bdd.commit()
     return astronaute.en_dict(), 200
 

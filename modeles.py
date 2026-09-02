@@ -14,6 +14,8 @@ class Astronaute(Base):
     nom: Mapped[str] = mapped_column(String(100))
     role: Mapped[str] = mapped_column(String(50))
     mission: Mapped[str] = mapped_column(String(50))
+    nationalite: Mapped[str] = mapped_column(String(50))
+    programme: Mapped[str] = mapped_column(String(50))
     
 
     def en_dict(self) -> dict:
@@ -22,4 +24,6 @@ class Astronaute(Base):
             "nom": self.nom,
             "role": self.role,
             "mission": self.mission,
+            "nationalite": self.nationalite,
+            "programme": self.programme,
         }

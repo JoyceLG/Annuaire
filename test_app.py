@@ -15,9 +15,9 @@ def client(tmp_path):
 
     with bdd.FabriqueSession() as session:
         session.add_all([
-            Astronaute(nom="Neil Armstrong", role="commandant", mission="Apollo 11"),
-            Astronaute(nom="Alan Bean", role="pilote", mission="Apollo 12"),
-            Astronaute(nom="Peter Conrad", role="commandant", mission="Apollo 12"),
+            Astronaute(nom="Neil Armstrong", role="commandant", mission="Apollo 11", nationalite="Etats-Unis", programme="Apollo"),
+            Astronaute(nom="Alan Bean", role="pilote", mission="Apollo 12", nationalite="Etats-Unis", programme="Apollo"),
+            Astronaute(nom="Peter Conrad", role="commandant", mission="Apollo 12", nationalite="Etats-Unis", programme="Apollo"),
         ])
         session.commit()
 
@@ -87,7 +87,7 @@ def test_liste_filtre_sans_resultat(client):
 def test_creation_valide(client):
     reponse = client.post(
         "/api/astronautes",
-        json={"nom": "Edgar Mitchell", "role": "pilote", "mission": "Apollo 14"},
+        json={"nom": "Edgar Mitchell", "role": "pilote", "mission": "Apollo 14", "nationalite": "Etats-Unis"},
     )
     assert reponse.status_code == 201
     assert "Location" in reponse.headers
@@ -96,10 +96,23 @@ def test_creation_valide(client):
     assert relecture.get_json()["nom"] == "Edgar Mitchell"
 
 
+# Création valide sans programme : 201
+def test_creation_valide_sans_programme(client):
+    reponse = client.post(
+        "/api/astronautes",
+        json={"nom": "Edgar Mitchell", "role": "pilote", "mission": "Apollo 14", "nationalite": "Etats-Unis"},
+    )
+    assert reponse.status_code == 201
+    assert "Location" in reponse.headers
+    relecture = client.get(reponse.headers["Location"])
+    assert relecture.status_code == 200
+    assert relecture.get_json()["programme"] == "Apollo"
+
+
 # Champ manquant : 400
 def test_creation_avec_champ_manquant(client):
     reponse = client.post(
-        "/api/astronautes", json={"nom": "Edgar Mitchell", "mission": "Apollo 14"}
+        "/api/astronautes", json={"nom": "Edgar Mitchell", "mission": "Apollo 14", "nationalite": "Etats-Unis"}
     )
     assert reponse.status_code == 400
 
@@ -108,7 +121,7 @@ def test_creation_avec_champ_manquant(client):
 def test_creation_avec_role_invalide(client):
     reponse = client.post(
         "/api/astronautes",
-        json={"nom": "Edgar Mitchell", "role": "cosmonaute", "mission": "Apollo 14"},
+        json={"nom": "Edgar Mitchell", "role": "cosmonaute", "mission": "Apollo 14", "nationalite": "Etats-Unis"},
     )
     assert reponse.status_code == 400
 
@@ -121,6 +134,7 @@ def test_creation_avec_champ_inconnu(client):
             "nom": "Edgar Mitchell",
             "role": "pilote",
             "mission": "Apollo 14",
+            "nationalite": "Etats-Unis",
             "salaire": "100000",
         },
     )
@@ -148,17 +162,18 @@ def test_corps_json_malforme(client):
 def test_put_remplace_reellement(client):
     reponse = client.put(
         "/api/astronautes/1",
-        json={"nom": "Modifié", "role": "pilote", "mission": "Apollo 99"},
+        json={"nom": "Youri Gagarine", "role": "pilote", "mission": "Soyouz 1", "nationalite": "Russe"},
     )
     assert reponse.status_code == 200
     relecture = client.get("/api/astronautes/1")
-    assert relecture.get_json()["nom"] == "Modifié"
+    assert relecture.get_json()["nom"] == "Youri Gagarine"
+    assert relecture.get_json()["programme"] == "Soyouz"
 
 
 # PUT incomplet : 400
 def test_put_modifie_avec_champs_incomplets(client):
     reponse = client.put(
-        "/api/astronautes/1", json={"nom": "Modifié", "mission": "Apollo 99"}
+        "/api/astronautes/1", json={"nom": "Youri Gagarine", "mission": "Soyouz 1", "nationalite": "Russe"}
     )
     assert reponse.status_code == 400
 
@@ -166,27 +181,29 @@ def test_put_modifie_avec_champs_incomplets(client):
 # PATCH partiel : seul le champ envoyé change, les autres sont intacts
 def test_patch_ne_touche_que_les_champs_envoyes(client):
     reponse = client.patch(
-        "/api/astronautes/1", json={"nom": "Modifié", "mission": "Apollo 99"}
+        "/api/astronautes/1", json={"nom": "Youri Gagarine", "mission": "Soyouz 1", "nationalite": "Russe"}
     )
     assert reponse.status_code == 200
     relecture = client.get("/api/astronautes/1")
-    assert relecture.get_json()["nom"] == "Modifié"
+    assert relecture.get_json()["nom"] == "Youri Gagarine"
     assert relecture.get_json()["role"] == "commandant"
-    assert relecture.get_json()["mission"] == "Apollo 99"
-
+    assert relecture.get_json()["mission"] == "Soyouz 1"
+    assert relecture.get_json()["nationalite"] == "Russe"
+    assert relecture.get_json()["programme"] == "Soyouz"
 
 # PATCH complet : tous les champs envoyés changent
 def test_patch_modifie_avec_tous_les_champs(client):
     reponse = client.patch(
         "/api/astronautes/1",
-        json={"nom": "Modifié", "role": "pilote", "mission": "Apollo 99"},
+        json={"nom": "Youri Gagarine", "role": "commandant", "mission": "Soyouz 1", "nationalite": "Russe"},
     )
     assert reponse.status_code == 200
     relecture = client.get("/api/astronautes/1")
-    assert relecture.get_json()["nom"] == "Modifié"
-    assert relecture.get_json()["role"] == "pilote"
-    assert relecture.get_json()["mission"] == "Apollo 99"
-
+    assert relecture.get_json()["nom"] == "Youri Gagarine"
+    assert relecture.get_json()["role"] == "commandant"
+    assert relecture.get_json()["mission"] == "Soyouz 1"
+    assert relecture.get_json()["nationalite"] == "Russe"
+    assert relecture.get_json()["programme"] == "Soyouz"
 
 # PATCH avec rôle invalide : 400
 def test_patch_modifie_avec_role_invalide(client):
