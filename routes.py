@@ -1,38 +1,41 @@
 from flask import Blueprint, request, url_for
+from pydantic import ValidationError, BaseModel
+
 from session_web import session_bdd
-import donnees
 from erreurs import DonneesInvalides, MissionUtilisee
-import validation
+
+import schemas
+import donnees
 
 bp = Blueprint("astronautes", __name__, url_prefix="/api")
+
 
 class Tables:
     ASTRONAUTE = "astronaute"
     MISSION = "mission"
 
-def lire_corps_json(type, partiel: bool = False) -> dict:
-    """Lit et valide le corps JSON, ou lève DonneesInvalides."""
 
-    donnees_entree = request.get_json(silent=True)
+def lire_corps(modele: type[BaseModel], partiel: bool = False) -> dict:
+    """Lit le corps JSON, le valide contre le modèle, renvoie un dict de champs."""
 
-    if not isinstance(donnees_entree, dict):
+    corps = request.get_json(silent=True)
+    if not isinstance(corps, dict):
         raise DonneesInvalides({"corps": "doit être un objet JSON"})
-    
-    if not donnees_entree:
+
+    if not corps:
         raise DonneesInvalides({"corps": "ne peut pas être vide"})
 
-    if type == Tables.ASTRONAUTE:
-        erreurs = validation.valider_astronaute(donnees_entree, partiel)
-    elif type == Tables.MISSION:
-        erreurs = validation.valider_mission(donnees_entree, partiel)
+    try:
+        entree = modele.model_validate(corps)
+    except ValidationError as e:
+        raise DonneesInvalides(schemas.convertir_erreurs(e))
+
+    if partiel:
+        donnees = entree.model_dump(exclude_unset=True)
     else:
-        erreurs = {"type": "inconnu"}
+        donnees = entree.model_dump()
 
-    if erreurs:
-        raise DonneesInvalides(erreurs)
-
-    return donnees_entree
-
+    return donnees
 
 
 @bp.route("/echo", methods=["GET", "POST"])
@@ -66,18 +69,18 @@ def liste_astronautes():
 
 @bp.post("/astronautes")
 def ajoute_astronaute():
-    """Ajoute un nouvel astronaute à la liste, et renvoie son en-tête Location."""
 
-    donnees_entree = lire_corps_json(Tables.ASTRONAUTE)
+    donnees_entree = lire_corps(schemas.AstronauteEntree)
+
     bdd = session_bdd()
-    nouvel_astronaute = donnees.creer_astronaute(bdd, donnees_entree)
+    astronaute = donnees.creer_astronaute(bdd, donnees_entree)
     bdd.commit()
     return (
-        nouvel_astronaute.en_dict(),
+        astronaute.en_dict(),
         201,
         {
             "Location": url_for(
-                "astronautes.lire_astronaute", id_astronaute=nouvel_astronaute.id
+                "astronautes.lire_astronaute", id_astronaute=astronaute.id
             )
         },
     )
@@ -87,14 +90,17 @@ def ajoute_astronaute():
 def remplace_astronaute(id_astronaute: int):
     """Remplace les informations d'un astronaute donné."""
 
+    donnees_entree = lire_corps(schemas.AstronauteEntree)
+
     bdd = session_bdd()
     astronaute = donnees.trouver_astronaute(bdd, id_astronaute)
 
-    donnees_entree = lire_corps_json(Tables.ASTRONAUTE)
+    if "mission_id" in donnees_entree:
+        donnees.trouver_mission(bdd, donnees_entree["mission_id"])
 
     for cle, valeur in donnees_entree.items():
         setattr(astronaute, cle, valeur)
-    
+
     bdd.commit()
     return astronaute.en_dict(), 200
 
@@ -103,13 +109,17 @@ def remplace_astronaute(id_astronaute: int):
 def modifie_astronaute(id_astronaute: int):
     """Modifie partiellement les informations d'un astronaute donné."""
 
+    donnees_entree = lire_corps(schemas.AstronautePatch, True)
+
     bdd = session_bdd()
     astronaute = donnees.trouver_astronaute(bdd, id_astronaute)
 
-    donnees_entree = lire_corps_json(Tables.ASTRONAUTE, True)
-    
+    if "mission_id" in donnees_entree:
+        donnees.trouver_mission(bdd, donnees_entree["mission_id"])
+
     for cle, valeur in donnees_entree.items():
         setattr(astronaute, cle, valeur)
+
     bdd.commit()
     return astronaute.en_dict(), 200
 
@@ -117,7 +127,6 @@ def modifie_astronaute(id_astronaute: int):
 @bp.delete("/astronautes/<int(min=1):id_astronaute>")
 def supprime_astronaute(id_astronaute: int):
     """Supprime un astronaute de la liste (204 sans corps)."""
-
 
     bdd = session_bdd()
     astronaute = donnees.trouver_astronaute(bdd, id_astronaute)
@@ -153,7 +162,8 @@ def liste_astronautes_mission(id_mission: int):
 def ajoute_mission():
     """Ajoute une nouvelle mission à la liste, et renvoie son en-tête Location."""
 
-    donnees_entree = lire_corps_json(Tables.MISSION)
+    donnees_entree = lire_corps(schemas.MissionEntree)
+
     bdd = session_bdd()
     nouvelle_mission = donnees.creer_mission(bdd, donnees_entree)
     bdd.commit()
@@ -167,6 +177,38 @@ def ajoute_mission():
             )
         },
     )
+
+
+@bp.put("/missions/<int(min=1):id_mission>")
+def remplace_mission(id_mission: int):
+    """Remplace les informations d'une mission donnée."""
+
+    donnees_entree = lire_corps(schemas.MissionEntree)
+
+    bdd = session_bdd()
+    mission = donnees.trouver_mission(bdd, id_mission)
+
+    for cle, valeur in donnees_entree.items():
+        setattr(mission, cle, valeur)
+
+    bdd.commit()
+    return mission.en_dict(), 200
+
+
+@bp.patch("/missions/<int(min=1):id_mission>")
+def modifie_mission(id_mission: int):
+    """Modifie partiellement les informations d'une mission donnée."""
+
+    donnees_entree = lire_corps(schemas.MissionPatch, True)
+
+    bdd = session_bdd()
+    mission = donnees.trouver_mission(bdd, id_mission)
+
+    for cle, valeur in donnees_entree.items():
+        setattr(mission, cle, valeur)
+
+    bdd.commit()
+    return mission.en_dict(), 200
 
 
 @bp.delete("/missions/<int(min=1):id_mission>")

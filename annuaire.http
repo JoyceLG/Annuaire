@@ -60,13 +60,13 @@ Content-Type: application/json
 POST {{base}}/astronautes
 Content-Type: application/json
 
-{"nom": "Michael Collins", "role": "cosmonaute", "mission_id": "1", "nationalite": "Etats-Unis"}
+{"nom": "Michael Collins", "role": "cosmonaute", "mission_id": 1, "nationalite": "Etats-Unis"}
 
 ### Création avec un champ manquant → 400
 POST {{base}}/astronautes
 Content-Type: application/json
 
-{"nom": "Michael Collins", "role": "pilote", "mission_id": "1"}
+{"nom": "Michael Collins", "role": "pilote", "mission_id": 1}
 
 ### Création avec un champ inconnu → 400
 POST {{base}}/astronautes
@@ -90,7 +90,7 @@ Content-Type: application/json
 PUT {{base}}/astronautes/2
 Content-Type: application/json
 
-{"nom": "Alan Bean", "role": "commandant", "mission_id": "2", "nationalite": "Etats-Unis"}
+{"nom": "Alan Bean", "role": "commandant", "mission_id": 2, "nationalite": "Etats-Unis"}
 
 ### PUT incomplet → 400 (tous les champs sont requis)
 PUT {{base}}/astronautes/2
@@ -108,13 +108,50 @@ Content-Type: application/json
 PATCH {{base}}/astronautes/3
 Content-Type: application/json
 
-{"mission_id": "3"}
+{"mission_id": 3}
 
 ### PATCH avec corps vide → 400
 PATCH {{base}}/astronautes/3
 Content-Type: application/json
 
 {}
+
+### PATCH avec corps null → 400
+PATCH {{base}}/astronautes/3
+Content-Type: application/json
+
+{"nom": null}
+
+### PATCH avec un nom vide → 400
+PATCH {{base}}/astronautes/3
+Content-Type: application/json
+
+{"nom": ""}
+
+### PATCH avec un nom rempli d'espaces → 400 (nettoye, il devient vide)
+PATCH {{base}}/astronautes/3
+Content-Type: application/json
+
+{"nom": "   "}
+
+### PATCH avec une nationalite vide → 400
+PATCH {{base}}/astronautes/3
+Content-Type: application/json
+
+{"nationalite": ""}
+
+### PATCH avec mission_id à 0 → 400 (un identifiant vaut au moins 1)
+PATCH {{base}}/astronautes/3
+Content-Type: application/json
+
+{"mission_id": 0}
+
+### PATCH avec une mission inexistante → 404
+PATCH {{base}}/astronautes/3
+Content-Type: application/json
+
+{"mission_id": 999}
+
 
 ### Suppression → 204
 DELETE {{base}}/astronautes/5
@@ -188,11 +225,29 @@ Content-Type: application/json
 
 {"nom": "Gemini 4", "annee": 1965, "cout": 500000000}
 
-### PUT et PATCH ne sont pas exposés sur les missions → 405
+### Remplacement complet d'une mission → 200
 PUT {{base}}/missions/2
 Content-Type: application/json
 
 {"nom": "Apollo 12", "annee": 1970}
+
+### Modification partielle d'une mission → 200
+PATCH {{base}}/missions/2
+Content-Type: application/json
+
+{"annee": 1969}
+
+### PATCH avec une année antérieure à 1900 → 400
+PATCH {{base}}/missions/2
+Content-Type: application/json
+
+{"annee": 1500}
+
+### PATCH avec un nom de mission vide → 400
+PATCH {{base}}/missions/2
+Content-Type: application/json
+
+{"nom": "   "}
 
 ### Suppression d'une mission sans équipage → 204
 ### (Apollo 13, créée plus haut ; ajuster l'id si la base a déjà servi)
@@ -201,7 +256,6 @@ DELETE {{base}}/missions/4
 ### Suppression d'une mission inexistante → 404
 DELETE {{base}}/missions/999
 
-### Suppression d'une mission qui a encore un équipage → 500
-### Bug connu : mission_id est NOT NULL, le détachement échoue.
-### Voir test_suppression_mission_avec_equipage (xfail) dans test_app.py.
+### Suppression d'une mission qui a encore un équipage → 409
+### La mission est protégée tant qu'un astronaute la référence (MissionUtilisee).
 DELETE {{base}}/missions/2

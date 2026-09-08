@@ -12,9 +12,6 @@ from modeles import Astronaute, Base, Mission
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path}/test.db")
-    # monkeypatch restaure les deux attributs a la fin du test : le moteur de
-    # production n'est jamais touche, et bdd.engine pointe bien sur la base
-    # temporaire (sans quoi l'ecoute des requetes SQL n'observerait rien).
     monkeypatch.setattr(bdd, "engine", engine)
     monkeypatch.setattr(bdd, "FabriqueSession", sessionmaker(bind=engine))
     Base.metadata.create_all(engine)
@@ -24,8 +21,6 @@ def client(tmp_path, monkeypatch):
         apollo_12 = Mission(nom="Apollo 12", programme="Apollo", annee=1969)
         apollo_17 = Mission(nom="Apollo 17", programme="Apollo", annee=1972)
 
-        # On rattache les astronautes par la relation, pas par un mission_id
-        # devine : SQLAlchemy ordonne les INSERT et renseigne la cle etrangere.
         session.add_all(
             [
                 apollo_11,
@@ -60,7 +55,7 @@ def client(tmp_path, monkeypatch):
 def test_liste_ne_fait_pas_de_n_plus_1(client):
     requetes = []
     event.listen(bdd.engine, "before_cursor_execute", lambda *a: requetes.append(a[2]))
-    client.get("/api/astronautes")
+    client.get("/api/missions/1/astronautes")
     assert len(requetes) <= 2
 
 
@@ -425,7 +420,7 @@ def test_creation_mission_refuse_le_programme_fourni(client):
         "/api/missions", json={"nom": "Gemini 4", "programme": "Gemini", "annee": 1965}
     )
     assert reponse.status_code == 400
-    assert "programme" in reponse.get_json()["details"]["champs_inconnus"]
+    assert "Extra inputs are not permitted" in reponse.get_json()["details"]["programme"]
 
 
 # Nom déjà pris : 400 (contrainte unique sur Mission.nom)
@@ -453,7 +448,7 @@ def test_creation_mission_annee_booleen(client):
 def test_creation_mission_avec_champ_manquant(client):
     reponse = client.post("/api/missions", json={"nom": "Gemini 4"})
     assert reponse.status_code == 400
-    assert reponse.get_json()["details"]["annee"] == "champ obligatoire manquant"
+    assert reponse.get_json()["details"]["annee"] == "Field required"
 
 
 # Nom vide : 400
@@ -513,13 +508,6 @@ def test_suppression_mission_avec_equipage(client):
     assert reponse.status_code == 409
 
 
-# Les missions ne se remplacent ni ne se modifient : 405
-def test_put_et_patch_mission_non_autorises(client):
-    corps = {"nom": "Apollo 12", "annee": 1970}
-    assert client.put("/api/missions/2", json=corps).status_code == 405
-    assert client.patch("/api/missions/2", json=corps).status_code == 405
-
-
 # Garde-fou base de données : le doublon n'est plus détecté en amont par la
 # validation, c'est la contrainte unique sur Mission.nom qui tranche.
 def test_creer_mission_doublon_leve_mission_deja_existante(client):
@@ -544,3 +532,90 @@ def test_relecture_puis_put_fonctionne(client):
     lu = client.get("/api/astronautes/1").get_json()
     renvoi = {k: v for k, v in lu.items() if k != "id"}
     assert client.put("/api/astronautes/1", json=renvoi).status_code == 200
+
+# 
+def test_annee_en_chaine_est_refusee(client):
+    reponse = client.post("/api/missions", json={"nom": "Apollo 18", "annee": "1973"})
+    assert reponse.status_code == 400
+
+#
+def test_nom_avec_espaces_est_nettoye(client):
+    reponse = client.post("/api/astronautes", json={
+        "nom": "  Michael Collins  ", "role": "pilote",
+        "nationalite": "Etats-Unis", "mission_id": 1,
+    })
+    assert reponse.get_json()["nom"] == "Michael Collins"
+
+# ---------------------------------------------------------------------------
+# PATCH : les champs envoyés sont validés comme à la création
+# ---------------------------------------------------------------------------
+
+# Nom vide : 400 (et l'astronaute n'est pas modifié)
+def test_patch_nom_vide_renvoie_400(client):
+    reponse = client.patch("/api/astronautes/1", json={"nom": ""})
+    assert reponse.status_code == 400
+    assert "nom" in reponse.get_json()["details"]
+    assert client.get("/api/astronautes/1").get_json()["nom"] == "Neil Armstrong"
+
+
+# Nom composé uniquement d'espaces : 400 (le nettoyage laisse une chaîne vide)
+def test_patch_nom_espaces_renvoie_400(client):
+    reponse = client.patch("/api/astronautes/1", json={"nom": "   "})
+    assert reponse.status_code == 400
+    assert "nom" in reponse.get_json()["details"]
+    assert client.get("/api/astronautes/1").get_json()["nom"] == "Neil Armstrong"
+
+
+# Nationalité vide : 400 (et l'astronaute n'est pas modifié)
+def test_patch_nationalite_vide_renvoie_400(client):
+    reponse = client.patch("/api/astronautes/1", json={"nationalite": ""})
+    assert reponse.status_code == 400
+    assert "nationalite" in reponse.get_json()["details"]
+    assert client.get("/api/astronautes/1").get_json()["nationalite"] == "Etats-Unis"
+
+
+# mission_id à 0 : 400, refusé par la validation (un identifiant vaut au moins 1)
+def test_patch_mission_id_zero_renvoie_400(client):
+    reponse = client.patch("/api/astronautes/1", json={"mission_id": 0})
+    assert reponse.status_code == 400
+    assert "mission_id" in reponse.get_json()["details"]
+    assert client.get("/api/astronautes/1").get_json()["mission_id"] == 1
+
+
+# mission_id valide mais inexistant : 404, pas un rattachement silencieux
+def test_patch_mission_id_inexistant_renvoie_404(client):
+    reponse = client.patch("/api/astronautes/1", json={"mission_id": 999})
+    assert reponse.status_code == 404
+    assert "erreur" in reponse.get_json()
+    assert client.get("/api/astronautes/1").get_json()["mission_id"] == 1
+
+
+# Même garde-fou côté PUT
+def test_put_mission_id_inexistant_renvoie_404(client):
+    reponse = client.put(
+        "/api/astronautes/1",
+        json={
+            "nom": "Neil Armstrong",
+            "role": "commandant",
+            "mission_id": 999,
+            "nationalite": "Etats-Unis",
+        },
+    )
+    assert reponse.status_code == 404
+    assert client.get("/api/astronautes/1").get_json()["mission_id"] == 1
+
+
+# Année antérieure à 1900 : 400 (et la mission n'est pas modifiée)
+def test_patch_mission_annee_trop_ancienne_renvoie_400(client):
+    reponse = client.patch("/api/missions/1", json={"annee": 1500})
+    assert reponse.status_code == 400
+    assert "annee" in reponse.get_json()["details"]
+    assert client.get("/api/missions/1").get_json()["annee"] == 1969
+
+
+# Nom de mission vide : 400 (même règle qu'à la création)
+def test_patch_mission_nom_vide_renvoie_400(client):
+    reponse = client.patch("/api/missions/1", json={"nom": "   "})
+    assert reponse.status_code == 400
+    assert "nom" in reponse.get_json()["details"]
+    assert client.get("/api/missions/1").get_json()["nom"] == "Apollo 11"

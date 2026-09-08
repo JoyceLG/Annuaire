@@ -38,10 +38,10 @@ class Astronaute(Base):
     mission: Mapped["Mission"] = relationship(back_populates="astronautes")
 
     def en_dict(self) -> dict:
-        return {lllll
+        return {
             "id": self.id,
             "nom": self.nom,
             "role": self.role,
             "nationalite": self.nationalite,
-            "mission_id": self.mission.id,
+            "mission_id": self.mission_id,
         }
