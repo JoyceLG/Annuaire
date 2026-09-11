@@ -7,6 +7,10 @@ from erreurs import (
     MissionDejaExistante,
     MissionIntrouvable,
     MissionUtilisee,
+    JetonManquant,
+    JetonExpire,
+    JetonInvalide,
+    UtilisateurIntrouvable,
 )
 
 
@@ -54,6 +58,22 @@ def enregistrer_gestionnaires(app):
 
     @app.errorhandler(IdentifiantsInvalides)
     def gerer_identifiants_invalides(erreur):
+        return {"erreur": str(erreur)}, 401
+    
+    @app.errorhandler(UtilisateurIntrouvable)
+    def gerer_utilisateur_introuvable(erreur):
+        return {"erreur": str(erreur)}, 404
+    
+    @app.errorhandler(JetonManquant)
+    def gerer_jeton_manquant(erreur):
+        return {"erreur": str(erreur)}, 401
+
+    @app.errorhandler(JetonExpire)
+    def gerer_jeton_expire(erreur):
+        return {"erreur": str(erreur)}, 401
+
+    @app.errorhandler(JetonInvalide)
+    def gerer_jeton_invalide(erreur):
         return {"erreur": str(erreur)}, 401
 
     @app.errorhandler(Exception)

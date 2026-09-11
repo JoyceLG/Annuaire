@@ -1,4 +1,5 @@
 @base = http://127.0.0.1:5000/api
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiaWF0IjoxNzg5MDQ5OTI2LCJleHAiOjE3ODkwNTE3MjZ9.Eck6WGEVYNVk7zFTEeNbbSGFDVTBTZiKd3lXUjZw7hw
 
 ### Jeu de données de départ, après `python peupler.py` sur une base neuve :
 ###   missions      1 Apollo 11 (1969) · 2 Apollo 12 (1969) · 3 Apollo 14 (1971)
@@ -226,10 +227,10 @@ Content-Type: application/json
 {"nom": "Gemini 4", "annee": 1965, "cout": 500000000}
 
 ### Remplacement complet d'une mission → 200
-PUT {{base}}/missions/2
+PUT {{base}}/missions/1
 Content-Type: application/json
 
-{"nom": "Apollo 12", "annee": 1970}
+{"nom": "Apollo 11", "annee": 1969}
 
 ### Modification partielle d'une mission → 200
 PATCH {{base}}/missions/2
@@ -259,3 +260,55 @@ DELETE {{base}}/missions/999
 ### Suppression d'une mission qui a encore un équipage → 409
 ### La mission est protégée tant qu'un astronaute la référence (MissionUtilisee).
 DELETE {{base}}/missions/2
+
+
+# =================== UTILISATEURS ===========================
+
+### Inscription d'un nouvel utilisateur
+POST {{base}}/inscription
+Content-Type: application/json
+
+{"email": "nouvel.utilisateur@example.com", "mot_de_passe": "motdepassevalide"}
+
+### Connexion d'un utilisateur existant
+POST {{base}}/connexion
+Content-Type: application/json
+
+{"email": "nouvel.utilisateur@example.com", "mot_de_passe": "motdepassevalide"}
+
+### Connexion avec un mot de passe incorrect → 401
+POST {{base}}/connexion
+Content-Type: application/json
+
+{"email": "nouvel.utilisateur@example.com", "mot_de_passe": "mauvaismotdepasse"}
+
+### Connexion avec un utilisateur inexistant → 404
+POST {{base}}/connexion
+Content-Type: application/json
+
+{"email": "inexistant@example.com", "mot_de_passe": "motdepasse"}
+
+### Affiche l'utilisateur actuel
+GET {{base}}/moi
+Authorization: Bearer {{token}}
+
+
+# =================== ACCÈS PROTÉGÉ ===========================
+
+### Accès à une ressource protégée sans authentification → 401
+GET {{base}}/astronautes/1
+
+### Accès à une ressource protégée avec un token manquant → 401
+DELETE {{base}}/astronautes/1
+
+### Accès à une ressource protégée avec un token invalide → 401
+DELETE {{base}}/astronautes/1
+Authorization: Bearer nimportequoi
+
+### Accès à une ressource protégée avec un token manquant → 401
+DELETE {{base}}/astronautes/1
+Authorization: {{token}}
+
+### Accès à une ressource protégée avec un token valide → 204
+DELETE {{base}}/astronautes/7
+Authorization: Bearer {{token}}

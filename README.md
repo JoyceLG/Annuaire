@@ -1,38 +1,55 @@
-# Annuaire des astronautes — Session 15 : comptes et mots de passe
+# Annuaire des astronautes — Session 16 : rester connecté
 
-Une table `utilisateurs`, et des mots de passe qui ne sont jamais stockés.
+L'API délivre un jeton JWT à la connexion, et les routes protégées le
+réclament.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- **Argon2** (`argon2-cffi`) plutôt que SHA-256. Un hachage de mot de passe
-  doit être *lent* : SHA-256 est conçu pour être rapide, donc excellent pour
-  celui qui teste des milliards de candidats. `essai_hachage.py` mesure l'écart
-  au lieu de l'affirmer.
-- **Le sel**, inclus dans l'empreinte Argon2 : deux comptes avec le même mot de
-  passe n'ont pas la même empreinte, et une table précalculée ne sert à rien.
-- **Séparation stricte** : l'email identifie, l'empreinte authentifie. Aucune
-  route ne renvoie jamais l'empreinte.
-- **Anti-énumération à la connexion** : email inconnu et mot de passe faux
-  donnent la même réponse *et* le même temps de réponse. Sans quoi le temps de
-  réponse dit à l'attaquant quels comptes existent.
-  Attention : comparer à une chaîne factice non hachée ne protège de rien — il
-  faut une véritable empreinte factice précalculée. Mesuré ici à un facteur
-  ~85 000 d'écart avant correction.
+- JWT avec PyJWT : un jeton **signé, pas chiffré**. Son contenu est lisible par
+  n'importe qui — on n'y met donc jamais de secret, seulement de quoi identifier
+  le porteur (`sub`, `iat`, `exp`).
+- `algorithms=[...]` en liste blanche à la vérification, **obligatoire** : sans
+  elle, un attaquant choisit l'algorithme à notre place, `none` compris.
+- Le décorateur `authentification_requise` : un seul endroit qui sait lire
+  l'en-tête `Authorization`, vérifier le jeton et charger l'utilisateur.
+- La clé secrète vient de l'environnement, et l'application **refuse de
+  démarrer** si elle est absente. Pas de valeur par défaut : une clé de repli
+  silencieuse est une porte ouverte qu'on oublie de refermer.
+  Un `os.environ.setdefault` dans le code applicatif annulerait ce *fail fast*
+  et donnerait une clé différente par worker en production.
 
 ## Lancer
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install "flask>=3.1" "sqlalchemy>=2.0" alembic "pydantic[email]>=2" argon2-cffi pytest
+pip install "flask>=3.1" "sqlalchemy>=2.0" alembic "pydantic[email]>=2" pyjwt argon2-cffi pytest
+
+export CLE_SECRETE_JWT=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
 
 alembic upgrade head
 python peupler.py
 flask --app app run --debug        # http://127.0.0.1:5000
-pytest -q                          # 73 tests
+pytest -q                          # 80 tests
+```
 
-python essai_hachage.py            # la démonstration Argon2 contre SHA-256
+`conftest.py` fournit aux tests une clé jetable et des paramètres Argon2
+allégés — uniquement en test, jamais en production.
+
+## Essayer
+
+```bash
+curl -X POST http://127.0.0.1:5000/api/utilisateurs \
+     -H "Content-Type: application/json" \
+     -d '{"email": "camille@example.com", "mot_de_passe": "un-mot-de-passe-long"}'
+
+JETON=$(curl -s -X POST http://127.0.0.1:5000/api/connexion \
+     -H "Content-Type: application/json" \
+     -d '{"email": "camille@example.com", "mot_de_passe": "un-mot-de-passe-long"}' \
+     | python -c "import json,sys; print(json.load(sys.stdin)['jeton'])")
+
+curl -H "Authorization: Bearer $JETON" http://127.0.0.1:5000/api/astronautes
 ```

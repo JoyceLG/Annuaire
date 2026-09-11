@@ -56,6 +56,7 @@ class Utilisateur(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     empreinte: Mapped[str] = mapped_column(String(255))
     cree_le: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+    derniere_connexion: Mapped[datetime | None] = mapped_column(default=None)
 
     def en_dict(self) -> dict:
-        return {"id": self.id, "email": self.email}
+        return {"id": self.id, "email": self.email, "derniere_connexion": self.derniere_connexion}

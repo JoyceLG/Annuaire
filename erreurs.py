@@ -41,3 +41,24 @@ class EmailDejaUtilise(ErreurApi):
 class IdentifiantsInvalides(ErreurApi):
     def __init__(self):
         super().__init__(f"Identifiants invalides")
+
+
+class UtilisateurIntrouvable(ErreurApi):
+    def __init__(self, id_utilisateur: int):
+        self.id_utilisateur = id_utilisateur
+        super().__init__(f"L'utilisateur {id_utilisateur} n'existe pas")
+
+
+class JetonManquant(ErreurApi):
+    def __init__(self):
+        super().__init__(f"Le jeton est manquant")
+
+
+class JetonExpire(ErreurApi):
+    def __init__(self):
+        super().__init__(f"Le jeton a expiré")
+
+
+class JetonInvalide(ErreurApi):
+    def __init__(self):
+        super().__init__(f"Le jeton est invalide")

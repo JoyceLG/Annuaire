@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, InvalidHashError
+from argon2.exceptions import VerifyMismatchError
 
 from erreurs import (
     AstronauteIntrouvable,
@@ -12,6 +12,7 @@ from erreurs import (
     MissionDejaExistante,
     MissionIntrouvable,
     DonneesInvalides,
+    UtilisateurIntrouvable,
 )
 from modeles import Astronaute, Mission, Utilisateur
 
@@ -94,6 +95,13 @@ def creer_mission(bdd, champs: dict) -> Mission:
 
 def supprimer_mission(bdd, mission: Mission) -> None:
     bdd.delete(mission)
+
+
+def trouver_utilisateur(bdd, id_utilisateur: int) -> Utilisateur:
+    utilisateur = bdd.get(Utilisateur, id_utilisateur)
+    if utilisateur is None:
+        raise UtilisateurIntrouvable(id_utilisateur)
+    return utilisateur
 
 
 def creer_utilisateur(bdd, email: str, mot_de_passe: str) -> Utilisateur:

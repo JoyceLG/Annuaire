@@ -1,12 +1,18 @@
+import secrets
+
 import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
+from datetime import datetime, timedelta, UTC
+import jwt
 
+import jetons
 import bdd
 import donnees
+
 from app import app
 from erreurs import MissionDejaExistante
-from modeles import Astronaute, Base, Mission, Utilisateur
+from modeles import Astronaute, Base, Mission
 
 
 @pytest.fixture
@@ -49,6 +55,19 @@ def client(tmp_path, monkeypatch):
         session.commit()
 
     return app.test_client()
+
+
+@pytest.fixture
+def entetes_auth(client):
+    client.post(
+        "/api/inscription",
+        json={"email": "test@x.fr", "mot_de_passe": "motdepassetreslong"},
+    )
+    reponse = client.post(
+        "/api/connexion",
+        json={"email": "test@x.fr", "mot_de_passe": "motdepassetreslong"},
+    )
+    return {"Authorization": f"Bearer {reponse.get_json()['jeton']}"}
 
 
 # Test pour vérifier l'absence de problème N+1 lors de la récupération de la liste des astronautes
@@ -117,7 +136,7 @@ def test_liste_filtre_sans_resultat(client):
     reponse = client.get("/api/astronautes?mission_id=99")
     assert reponse.status_code == 200
     assert len(reponse.get_json()) == 0
-    
+
 
 # Filtre avec mission_id en string : 400
 def test_liste_filtre_avec_mission_id_en_string(client):
@@ -126,7 +145,7 @@ def test_liste_filtre_avec_mission_id_en_string(client):
 
 
 # Création valide : 201, en-tête Location présent, et relecture pour confirmer
-def test_creation_valide(client):
+def test_creation_valide(client, entetes_auth):
     reponse = client.post(
         "/api/astronautes",
         json={
@@ -135,6 +154,7 @@ def test_creation_valide(client):
             "mission_id": 1,
             "nationalite": "Etats-Unis",
         },
+        headers=entetes_auth,
     )
     assert reponse.status_code == 201
     assert "Location" in reponse.headers
@@ -144,7 +164,7 @@ def test_creation_valide(client):
 
 
 # Champ manquant : 400
-def test_creation_avec_champ_manquant(client):
+def test_creation_avec_champ_manquant(client, entetes_auth):
     reponse = client.post(
         "/api/astronautes",
         json={
@@ -152,12 +172,13 @@ def test_creation_avec_champ_manquant(client):
             "mission_id": 3,
             "nationalite": "Etats-Unis",
         },
+        headers=entetes_auth,
     )
     assert reponse.status_code == 400
 
 
 # Rôle invalide : 400
-def test_creation_avec_role_invalide(client):
+def test_creation_avec_role_invalide(client, entetes_auth):
     reponse = client.post(
         "/api/astronautes",
         json={
@@ -166,12 +187,13 @@ def test_creation_avec_role_invalide(client):
             "mission_id": 3,
             "nationalite": "Etats-Unis",
         },
+        headers=entetes_auth,
     )
     assert reponse.status_code == 400
 
 
 # Champ inconnu : 400
-def test_creation_avec_champ_inconnu(client):
+def test_creation_avec_champ_inconnu(client, entetes_auth):
     reponse = client.post(
         "/api/astronautes",
         json={
@@ -181,12 +203,13 @@ def test_creation_avec_champ_inconnu(client):
             "nationalite": "Etats-Unis",
             "salaire": "100000",
         },
+        headers=entetes_auth,
     )
     assert reponse.status_code == 400
-    
+
 
 # Mission inconnue : 404
-def test_creation_avec_mission_inconnue(client):
+def test_creation_avec_mission_inconnue(client, entetes_auth):
     reponse = client.post(
         "/api/astronautes",
         json={
@@ -195,11 +218,13 @@ def test_creation_avec_mission_inconnue(client):
             "mission_id": 999,
             "nationalite": "Etats-Unis",
         },
+        headers=entetes_auth,
     )
     assert reponse.status_code == 404
-    
+
+
 # Mission en format complet : 400
-def test_creation_avec_mission_mal_formatee(client):
+def test_creation_avec_mission_mal_formatee(client, entetes_auth):
     reponse = client.post(
         "/api/astronautes",
         json={
@@ -208,29 +233,31 @@ def test_creation_avec_mission_mal_formatee(client):
             "mission_id": "Apollo 14",
             "nationalite": "Etats-Unis",
         },
+        headers=entetes_auth,
     )
     assert reponse.status_code == 400
 
 
 # Corps vide : 400
-def test_creation_avec_corps_vide(client):
-    reponse = client.post("/api/astronautes", json={})
+def test_creation_avec_corps_vide(client, entetes_auth):
+    reponse = client.post("/api/astronautes", json={}, headers=entetes_auth)
     assert reponse.status_code == 400
 
 
 # JSON mal formé
-def test_corps_json_malforme(client):
+def test_corps_json_malforme(client, entetes_auth):
     reponse = client.post(
         "/api/astronautes",
         data="{invalide}",
         content_type="application/json",
+        headers=entetes_auth,
     )
     assert reponse.status_code == 400
     assert reponse.get_json() is not None
 
 
 # Modification d'un astronaute existant
-def test_put_remplace_reellement(client):
+def test_put_remplace_reellement(client, entetes_auth):
     reponse = client.put(
         "/api/astronautes/1",
         json={
@@ -239,6 +266,7 @@ def test_put_remplace_reellement(client):
             "mission_id": 1,
             "nationalite": "Etats-Unis",
         },
+        headers=entetes_auth,
     )
     assert reponse.status_code == 200
     relecture = client.get("/api/astronautes/1")
@@ -246,19 +274,21 @@ def test_put_remplace_reellement(client):
 
 
 # PUT incomplet : 400
-def test_put_modifie_avec_champs_incomplets(client):
+def test_put_modifie_avec_champs_incomplets(client, entetes_auth):
     reponse = client.put(
         "/api/astronautes/1",
         json={"nom": "Modifie", "mission_id": 1, "nationalite": "Etats-Unis"},
+        headers=entetes_auth,
     )
     assert reponse.status_code == 400
 
 
 # PATCH partiel : seul le champ envoyé change, les autres sont intacts
-def test_patch_ne_touche_que_les_champs_envoyes(client):
+def test_patch_ne_touche_que_les_champs_envoyes(client, entetes_auth):
     reponse = client.patch(
         "/api/astronautes/1",
         json={"nom": "Modifie", "mission_id": 1, "nationalite": "Etats-Unis"},
+        headers=entetes_auth,
     )
     assert reponse.status_code == 200
     relecture = client.get("/api/astronautes/1")
@@ -269,7 +299,7 @@ def test_patch_ne_touche_que_les_champs_envoyes(client):
 
 
 # PATCH complet : tous les champs envoyés changent
-def test_patch_modifie_avec_tous_les_champs(client):
+def test_patch_modifie_avec_tous_les_champs(client, entetes_auth):
     reponse = client.patch(
         "/api/astronautes/1",
         json={
@@ -278,6 +308,7 @@ def test_patch_modifie_avec_tous_les_champs(client):
             "mission_id": 1,
             "nationalite": "Etats-Unis",
         },
+        headers=entetes_auth,
     )
     assert reponse.status_code == 200
     relecture = client.get("/api/astronautes/1")
@@ -288,43 +319,46 @@ def test_patch_modifie_avec_tous_les_champs(client):
 
 
 # PATCH avec rôle invalide : 400
-def test_patch_modifie_avec_role_invalide(client):
+def test_patch_modifie_avec_role_invalide(client, entetes_auth):
     reponse = client.patch(
-        "/api/astronautes/1", json={"nom": "Modifié", "role": "cosmonaute"}
+        "/api/astronautes/1",
+        json={"nom": "Modifié", "role": "cosmonaute"},
+        headers=entetes_auth,
     )
     assert reponse.status_code == 400
 
 
 # PATCH avec corps vide : 400
-def test_patch_corps_vide_renvoie_400(client):
-    reponse = client.patch("/api/astronautes/1", json={})
+def test_patch_corps_vide_renvoie_400(client, entetes_auth):
+    reponse = client.patch("/api/astronautes/1", json={}, headers=entetes_auth)
     assert reponse.status_code == 400
 
 
 # Suppression : 204, puis un GET qui renvoie 404
-def test_suppression_astronaute(client):
-    reponse = client.delete("/api/astronautes/1")
+def test_suppression_astronaute(client, entetes_auth):
+    reponse = client.delete("/api/astronautes/1", headers=entetes_auth)
     assert reponse.status_code == 204
-    relecture = client.get("/api/astronautes/1")
+    relecture = client.get("/api/astronautes/1", headers=entetes_auth)
     assert relecture.status_code == 404
 
 
 # Suppression d'un inexistant : 404
-def test_suppression_inexistant(client):
-    reponse = client.delete("/api/astronautes/100")
+def test_suppression_inexistant(client, entetes_auth):
+    reponse = client.delete("/api/astronautes/100", headers=entetes_auth)
     assert reponse.status_code == 404
 
 
 # Decalage apres une suppression
-def test_suppression_ne_decale_pas_les_identifiants(client):
-    client.delete("/api/astronautes/1")
-    reponse = client.get("/api/astronautes/2")
+def test_suppression_ne_decale_pas_les_identifiants(client, entetes_auth):
+    client.delete("/api/astronautes/1", headers=entetes_auth)
+    reponse = client.get("/api/astronautes/2", headers=entetes_auth)
     assert reponse.get_json()["nom"] == "Alan Bean"
 
 
 # ---------------------------------------------------------------------------
 # Tests de l'API des missions
 # ---------------------------------------------------------------------------
+
 
 # Liste complète
 def test_liste_renvoie_toutes_les_missions(client):
@@ -397,8 +431,10 @@ def test_liste_astronautes_mission_inexistante(client):
 
 
 # Création valide : 201, en-tête Location présent, et relecture pour confirmer
-def test_creation_mission_valide(client):
-    reponse = client.post("/api/missions", json={"nom": "Apollo 13", "annee": 1970})
+def test_creation_mission_valide(client, entetes_auth):
+    reponse = client.post(
+        "/api/missions", json={"nom": "Apollo 13", "annee": 1970}, headers=entetes_auth
+    )
     assert reponse.status_code == 201
     assert "Location" in reponse.headers
     relecture = client.get(reponse.headers["Location"])
@@ -408,88 +444,110 @@ def test_creation_mission_valide(client):
 
 
 # Le programme est déduit du nom, il n'est pas fourni par le client
-def test_creation_mission_deduit_le_programme(client):
-    reponse = client.post("/api/missions", json={"nom": "Vostok 1", "annee": 1961})
+def test_creation_mission_deduit_le_programme(client, entetes_auth):
+    reponse = client.post(
+        "/api/missions", json={"nom": "Vostok 1", "annee": 1961}, headers=entetes_auth
+    )
     assert reponse.status_code == 201
     assert reponse.get_json()["programme"] == "Vostok"
 
 
 # ... et le fournir quand même est donc un champ inconnu : 400
-def test_creation_mission_refuse_le_programme_fourni(client):
+def test_creation_mission_refuse_le_programme_fourni(client, entetes_auth):
     reponse = client.post(
-        "/api/missions", json={"nom": "Gemini 4", "programme": "Gemini", "annee": 1965}
+        "/api/missions",
+        json={"nom": "Gemini 4", "programme": "Gemini", "annee": 1965},
+        headers=entetes_auth,
     )
     assert reponse.status_code == 400
-    assert "Extra inputs are not permitted" in reponse.get_json()["details"]["programme"]
+    assert (
+        "Extra inputs are not permitted" in reponse.get_json()["details"]["programme"]
+    )
 
 
 # Nom déjà pris : 400 (contrainte unique sur Mission.nom)
-def test_creation_mission_nom_deja_existant(client):
-    reponse = client.post("/api/missions", json={"nom": "Apollo 11", "annee": 1969})
+def test_creation_mission_nom_deja_existant(client, entetes_auth):
+    reponse = client.post(
+        "/api/missions", json={"nom": "Apollo 11", "annee": 1969}, headers=entetes_auth
+    )
     assert reponse.status_code == 409
 
 
 # L'année est un entier, pas une chaîne : 400
-def test_creation_mission_annee_non_entiere(client):
-    reponse = client.post("/api/missions", json={"nom": "Gemini 4", "annee": "1965"})
+def test_creation_mission_annee_non_entiere(client, entetes_auth):
+    reponse = client.post(
+        "/api/missions", json={"nom": "Gemini 4", "annee": "1965"}, headers=entetes_auth
+    )
     assert reponse.status_code == 400
     assert "annee" in reponse.get_json()["details"]
 
 
 # L'année est un entier, pas une chaîne : 400
-def test_creation_mission_annee_booleen(client):
-    reponse = client.post("/api/missions", json={"nom": "Gemini 4", "annee": True})
+def test_creation_mission_annee_booleen(client, entetes_auth):
+    reponse = client.post(
+        "/api/missions", json={"nom": "Gemini 4", "annee": True}, headers=entetes_auth
+    )
     assert reponse.status_code == 400
     assert "annee" in reponse.get_json()["details"]
 
 
-
 # Champ manquant : 400
-def test_creation_mission_avec_champ_manquant(client):
-    reponse = client.post("/api/missions", json={"nom": "Gemini 4"})
+def test_creation_mission_avec_champ_manquant(client, entetes_auth):
+    reponse = client.post(
+        "/api/missions", json={"nom": "Gemini 4"}, headers=entetes_auth
+    )
     assert reponse.status_code == 400
     assert reponse.get_json()["details"]["annee"] == "Field required"
 
 
 # Nom vide : 400
-def test_creation_mission_avec_nom_vide(client):
-    reponse = client.post("/api/missions", json={"nom": "   ", "annee": 1965})
+def test_creation_mission_avec_nom_vide(client, entetes_auth):
+    reponse = client.post(
+        "/api/missions", json={"nom": "   ", "annee": 1965}, headers=entetes_auth
+    )
     assert reponse.status_code == 400
 
 
 # Champ inconnu : 400
-def test_creation_mission_avec_champ_inconnu(client):
+def test_creation_mission_avec_champ_inconnu(client, entetes_auth):
     reponse = client.post(
-        "/api/missions", json={"nom": "Gemini 4", "annee": 1965, "cout": 500}
+        "/api/missions",
+        json={"nom": "Gemini 4", "annee": 1965, "cout": 500},
+        headers=entetes_auth,
     )
     assert reponse.status_code == 400
 
 
 # Corps vide : 400
-def test_creation_mission_avec_corps_vide(client):
-    reponse = client.post("/api/missions", json={})
+def test_creation_mission_avec_corps_vide(client, entetes_auth):
+    reponse = client.post("/api/missions", json={}, headers=entetes_auth)
     assert reponse.status_code == 400
 
 
 # JSON mal formé : 400 et réponse quand même en JSON
-def test_creation_mission_corps_json_malforme(client):
+def test_creation_mission_corps_json_malforme(client, entetes_auth):
     reponse = client.post(
-        "/api/missions", data="{invalide}", content_type="application/json"
+        "/api/missions",
+        data="{invalide}",
+        content_type="application/json",
+        headers=entetes_auth,
     )
     assert reponse.status_code == 400
     assert reponse.get_json() is not None
 
 
 # Une création est bien visible dans la liste
-def test_creation_mission_apparait_dans_la_liste(client):
-    client.post("/api/missions", json={"nom": "Apollo 13", "annee": 1970})
+def test_creation_mission_apparait_dans_la_liste(client, entetes_auth):
+    client.post(
+        "/api/missions", json={"nom": "Apollo 13", "annee": 1970}, headers=entetes_auth
+    )
     reponse = client.get("/api/missions")
     assert len(reponse.get_json()) == 4
 
 
 # Suppression d'une mission sans équipage : 204, puis un GET qui renvoie 404
-def test_suppression_mission_sans_equipage(client):
-    reponse = client.delete("/api/missions/3")
+def test_suppression_mission_sans_equipage(client, entetes_auth):
+    reponse = client.delete("/api/missions/3", headers=entetes_auth)
     assert reponse.status_code == 204
     assert reponse.get_data() == b""
     relecture = client.get("/api/missions/3")
@@ -497,14 +555,14 @@ def test_suppression_mission_sans_equipage(client):
 
 
 # Suppression d'une mission inexistante : 404
-def test_suppression_mission_inexistante(client):
-    reponse = client.delete("/api/missions/999")
+def test_suppression_mission_inexistante(client, entetes_auth):
+    reponse = client.delete("/api/missions/999", headers=entetes_auth)
     assert reponse.status_code == 404
 
 
 # Suppression d'une mission avec équipage : 409
-def test_suppression_mission_avec_equipage(client):
-    reponse = client.delete("/api/missions/2")
+def test_suppression_mission_avec_equipage(client, entetes_auth):
+    reponse = client.delete("/api/missions/2", headers=entetes_auth)
     assert reponse.status_code == 409
 
 
@@ -528,70 +586,95 @@ def test_creer_mission_renseigne_l_identifiant_avant_le_commit(client):
 
 
 # Test de relecture puis mise à jour d'un astronaute via PUT
-def test_relecture_puis_put_fonctionne(client):
+def test_relecture_puis_put_fonctionne(client, entetes_auth):
     lu = client.get("/api/astronautes/1").get_json()
     renvoi = {k: v for k, v in lu.items() if k != "id"}
-    assert client.put("/api/astronautes/1", json=renvoi).status_code == 200
+    assert (
+        client.put("/api/astronautes/1", json=renvoi, headers=entetes_auth).status_code
+        == 200
+    )
 
-# 
-def test_annee_en_chaine_est_refusee(client):
-    reponse = client.post("/api/missions", json={"nom": "Apollo 18", "annee": "1973"})
-    assert reponse.status_code == 400
 
 #
-def test_nom_avec_espaces_est_nettoye(client):
-    reponse = client.post("/api/astronautes", json={
-        "nom": "  Michael Collins  ", "role": "pilote",
-        "nationalite": "Etats-Unis", "mission_id": 1,
-    })
+def test_annee_en_chaine_est_refusee(client, entetes_auth):
+    reponse = client.post(
+        "/api/missions",
+        json={"nom": "Apollo 18", "annee": "1973"},
+        headers=entetes_auth,
+    )
+    assert reponse.status_code == 400
+
+
+#
+def test_nom_avec_espaces_est_nettoye(client, entetes_auth):
+    reponse = client.post(
+        "/api/astronautes",
+        json={
+            "nom": "  Michael Collins  ",
+            "role": "pilote",
+            "nationalite": "Etats-Unis",
+            "mission_id": 1,
+        },
+        headers=entetes_auth,
+    )
     assert reponse.get_json()["nom"] == "Michael Collins"
+
 
 # ---------------------------------------------------------------------------
 # PATCH : les champs envoyés sont validés comme à la création
 # ---------------------------------------------------------------------------
 
+
 # Nom vide : 400 (et l'astronaute n'est pas modifié)
-def test_patch_nom_vide_renvoie_400(client):
-    reponse = client.patch("/api/astronautes/1", json={"nom": ""})
+def test_patch_nom_vide_renvoie_400(client, entetes_auth):
+    reponse = client.patch("/api/astronautes/1", json={"nom": ""}, headers=entetes_auth)
     assert reponse.status_code == 400
     assert "nom" in reponse.get_json()["details"]
     assert client.get("/api/astronautes/1").get_json()["nom"] == "Neil Armstrong"
 
 
 # Nom composé uniquement d'espaces : 400 (le nettoyage laisse une chaîne vide)
-def test_patch_nom_espaces_renvoie_400(client):
-    reponse = client.patch("/api/astronautes/1", json={"nom": "   "})
+def test_patch_nom_espaces_renvoie_400(client, entetes_auth):
+    reponse = client.patch(
+        "/api/astronautes/1", json={"nom": "   "}, headers=entetes_auth
+    )
     assert reponse.status_code == 400
     assert "nom" in reponse.get_json()["details"]
     assert client.get("/api/astronautes/1").get_json()["nom"] == "Neil Armstrong"
 
 
 # Nationalité vide : 400 (et l'astronaute n'est pas modifié)
-def test_patch_nationalite_vide_renvoie_400(client):
-    reponse = client.patch("/api/astronautes/1", json={"nationalite": ""})
+def test_patch_nationalite_vide_renvoie_400(client, entetes_auth):
+    reponse = client.patch(
+        "/api/astronautes/1", json={"nationalite": ""}, headers=entetes_auth
+    )
     assert reponse.status_code == 400
     assert "nationalite" in reponse.get_json()["details"]
     assert client.get("/api/astronautes/1").get_json()["nationalite"] == "Etats-Unis"
 
 
 # mission_id à 0 : 400, refusé par la validation (un identifiant vaut au moins 1)
-def test_patch_mission_id_zero_renvoie_400(client):
-    reponse = client.patch("/api/astronautes/1", json={"mission_id": 0})
+def test_patch_mission_id_zero_renvoie_400(client, entetes_auth):
+    reponse = client.patch(
+        "/api/astronautes/1", json={"mission_id": 0}, headers=entetes_auth
+    )
     assert reponse.status_code == 400
     assert "mission_id" in reponse.get_json()["details"]
     assert client.get("/api/astronautes/1").get_json()["mission_id"] == 1
 
 
 # mission_id valide mais inexistant : 404, pas un rattachement silencieux
-def test_patch_mission_id_inexistant_renvoie_404(client):
-    reponse = client.patch("/api/astronautes/1", json={"mission_id": 999})
+def test_patch_mission_id_inexistant_renvoie_404(client, entetes_auth):
+    reponse = client.patch(
+        "/api/astronautes/1", json={"mission_id": 999}, headers=entetes_auth
+    )
     assert reponse.status_code == 404
     assert "erreur" in reponse.get_json()
     assert client.get("/api/astronautes/1").get_json()["mission_id"] == 1
 
 
 # Même garde-fou côté PUT
-def test_put_mission_id_inexistant_renvoie_404(client):
+def test_put_mission_id_inexistant_renvoie_404(client, entetes_auth):
     reponse = client.put(
         "/api/astronautes/1",
         json={
@@ -600,22 +683,25 @@ def test_put_mission_id_inexistant_renvoie_404(client):
             "mission_id": 999,
             "nationalite": "Etats-Unis",
         },
+        headers=entetes_auth,
     )
     assert reponse.status_code == 404
     assert client.get("/api/astronautes/1").get_json()["mission_id"] == 1
 
 
 # Année antérieure à 1900 : 400 (et la mission n'est pas modifiée)
-def test_patch_mission_annee_trop_ancienne_renvoie_400(client):
-    reponse = client.patch("/api/missions/1", json={"annee": 1500})
+def test_patch_mission_annee_trop_ancienne_renvoie_400(client, entetes_auth):
+    reponse = client.patch(
+        "/api/missions/1", json={"annee": 1500}, headers=entetes_auth
+    )
     assert reponse.status_code == 400
     assert "annee" in reponse.get_json()["details"]
     assert client.get("/api/missions/1").get_json()["annee"] == 1969
 
 
 # Nom de mission vide : 400 (même règle qu'à la création)
-def test_patch_mission_nom_vide_renvoie_400(client):
-    reponse = client.patch("/api/missions/1", json={"nom": "   "})
+def test_patch_mission_nom_vide_renvoie_400(client, entetes_auth):
+    reponse = client.patch("/api/missions/1", json={"nom": "   "}, headers=entetes_auth)
     assert reponse.status_code == 400
     assert "nom" in reponse.get_json()["details"]
     assert client.get("/api/missions/1").get_json()["nom"] == "Apollo 11"
@@ -627,75 +713,83 @@ def test_patch_mission_nom_vide_renvoie_400(client):
 
 
 # Inscription valide : 201, et l'empreinte n'apparaît nulle part dans la réponse
-def test_inscription_valide_renvoie_201(client):
+def test_inscription_valide_renvoie_201(client, entetes_auth):
     reponse = client.post(
         "/api/inscription",
         json={
             "email": "nouvel.utilisateur@example.com",
             "mot_de_passe": "motdepassevalide",
         },
+        headers=entetes_auth,
     )
     assert reponse.status_code == 201
     assert "empreinte" not in reponse.get_json()
 
 
 # Email déjà utilisé : 409
-def test_inscription_email_deja_utilise_renvoie_409(client):
+def test_inscription_email_deja_utilise_renvoie_409(client, entetes_auth):
     client.post(
-            "/api/inscription",
-            json={
-                "email": "nouvel.utilisateur@example.com",
-                "mot_de_passe": "motdepassevalide",
-            },
-        )
+        "/api/inscription",
+        json={
+            "email": "nouvel.utilisateur@example.com",
+            "mot_de_passe": "motdepassevalide",
+        },
+        headers=entetes_auth,
+    )
     reponse = client.post(
         "/api/inscription",
         json={
             "email": "nouvel.utilisateur@example.com",
             "mot_de_passe": "motdepassevalide",
         },
+        headers=entetes_auth,
     )
     assert reponse.status_code == 409
     assert "erreur" in reponse.get_json()
 
 
 # Email invalide : 400
-def test_inscription_email_invalide_renvoie_400(client):
+def test_inscription_email_invalide_renvoie_400(client, entetes_auth):
     reponse = client.post(
         "/api/inscription",
         json={
             "email": "email.invalide",
             "mot_de_passe": "motdepassevalide",
         },
+        headers=entetes_auth,
     )
     assert reponse.status_code == 400
     assert "email" in reponse.get_json()["details"]
 
 
 # Mot de passe trop court : 400 (et l'inscription n'est pas créée)
-def test_inscription_mot_de_passe_trop_court_renvoie_400(client):
+def test_inscription_mot_de_passe_trop_court_renvoie_400(client, entetes_auth):
     reponse = client.post(
         "/api/inscription",
         json={
             "email": "utilisateur@example.com",
             "mot_de_passe": "123",
         },
+        headers=entetes_auth,
     )
     assert reponse.status_code == 400
     assert "mot_de_passe" in reponse.get_json()["details"]
+
 
 # ---------------------------------------------------------------------------
 # POST : connexion d'un utilisateur
 # ---------------------------------------------------------------------------
 
+
 # Connexion correcte : 200
-def test_connexion_correcte_renvoie_200(client):
+def test_connexion_correcte_renvoie_200(client, entetes_auth):
     client.post(
         "/api/inscription",
         json={
             "email": "nouvel.utilisateur@example.com",
             "mot_de_passe": "motdepassevalide",
         },
+        headers=entetes_auth,
     )
     reponse = client.post(
         "/api/connexion",
@@ -703,18 +797,20 @@ def test_connexion_correcte_renvoie_200(client):
             "email": "nouvel.utilisateur@example.com",
             "mot_de_passe": "motdepassevalide",
         },
+        headers=entetes_auth,
     )
     assert reponse.status_code == 200
 
 
 # Mauvais mot de passe : 401
-def test_connexion_mauvais_mot_de_passe_renvoie_401(client):
+def test_connexion_mauvais_mot_de_passe_renvoie_401(client, entetes_auth):
     client.post(
         "/api/inscription",
         json={
             "email": "nouvel.utilisateur@example.com",
             "mot_de_passe": "motdepassevalide",
         },
+        headers=entetes_auth,
     )
     reponse = client.post(
         "/api/connexion",
@@ -722,19 +818,21 @@ def test_connexion_mauvais_mot_de_passe_renvoie_401(client):
             "email": "nouvel.utilisateur@example.com",
             "mot_de_passe": "mauvaismotdepasse",
         },
+        headers=entetes_auth,
     )
     assert reponse.status_code == 401
     assert "erreur" in reponse.get_json()
 
 
 # Email inexistant : 401, avec exactement le même corps de réponse que le cas précédent
-def test_connexion_email_inexistant_renvoie_401(client):
+def test_connexion_email_inexistant_renvoie_401(client, entetes_auth):
     client.post(
         "/api/inscription",
         json={
             "email": "nouvel.utilisateur@example.com",
             "mot_de_passe": "motdepassevalide",
         },
+        headers=entetes_auth,
     )
     reponse = client.post(
         "/api/connexion",
@@ -742,36 +840,116 @@ def test_connexion_email_inexistant_renvoie_401(client):
             "email": "inexistant@example.com",
             "mot_de_passe": "motdepassevalide",
         },
+        headers=entetes_auth,
     )
     assert reponse.status_code == 401
     assert "erreur" in reponse.get_json()
-    
+
 
 # La réponse de connexion ne doit pas révéler si le compte existe ou non : 401
-def test_connexion_ne_revele_pas_si_le_compte_existe(client):
+def test_connexion_ne_revele_pas_si_le_compte_existe(client, entetes_auth):
     client.post(
         "/api/inscription",
         json={
             "email": "connu@example.com",
             "mot_de_passe": "motdepassevalide",
         },
+        headers=entetes_auth,
     )
-    inconnu = client.post("/api/connexion", json={"email": "absent@example.com", "mot_de_passe": "motdepassevalide"})
-    mauvais = client.post("/api/connexion", json={"email": "connu@example.com", "mot_de_passe": "mauvaismotdepasse"})
+    inconnu = client.post(
+        "/api/connexion",
+        json={"email": "absent@example.com", "mot_de_passe": "motdepassevalide"},
+        headers=entetes_auth,
+    )
+    mauvais = client.post(
+        "/api/connexion",
+        json={"email": "connu@example.com", "mot_de_passe": "mauvaismotdepasse"},
+        headers=entetes_auth,
+    )
     assert inconnu.status_code == mauvais.status_code == 401
     assert inconnu.get_json() == mauvais.get_json()
-    
+
 
 # L'empreinte ne doit jamais être exposée dans la réponse d'inscription
-def test_empreinte_jamais_exposee(client):
+def test_empreinte_jamais_exposee(client, entetes_auth):
     reponse = client.post(
         "/api/inscription",
         json={
             "email": "nouvel.utilisateur@example.com",
             "mot_de_passe": "motdepassevalide",
         },
+        headers=entetes_auth,
     )
     corps = reponse.get_data(as_text=True)
     assert "argon2" not in corps
     assert "empreinte" not in corps
+
+
+# Un jeton expiré doit être refusé : 401
+def test_jeton_expire_est_refuse(client):
+    passe = datetime.now(UTC) - timedelta(hours=1)
+    jeton = jwt.encode(
+        {"sub": "1", "exp": passe}, jetons.CLE_SECRETE, algorithm="HS256"
+    )
+    reponse = client.delete(
+        "/api/astronautes/1", headers={"Authorization": f"Bearer {jeton}"}
+    )
+    assert reponse.status_code == 401
+
+
+# Un jeton signé avec une autre clé doit être refusé : 401
+def test_jeton_signe_avec_une_autre_cle_est_refuse(client):
+    jeton = jwt.encode(
+        {"sub": "1", "exp": datetime.now(UTC) + timedelta(minutes=5)},
+        secrets.token_urlsafe(32),  # clé assez longue pour HS256, mais pas la bonne
+        algorithm="HS256",
+    )
+    reponse = client.delete(
+        "/api/astronautes/1", headers={"Authorization": f"Bearer {jeton}"}
+    )
+    assert reponse.status_code == 401
+
+
+# Chaque route protégée sans jeton : 401
+def test_route_protegee_sans_jeton(client):
+    reponse = client.delete("/api/astronautes/1")
+    assert reponse.status_code == 401
+
+
+# Jeton falsifié : 401
+def test_jeton_falsifie_est_refuse(client):
+    jeton = "falsifie"
+    reponse = client.delete(
+        "/api/astronautes/1", headers={"Authorization": f"Bearer {jeton}"}
+    )
+    assert reponse.status_code == 401
+
+
+# En-tête sans le préfixe Bearer : 401
+def test_en_tete_sans_bearer_est_refuse(client):
+    jeton = jwt.encode(
+        {"sub": "1", "exp": datetime.now(UTC) + timedelta(minutes=5)},
+        jetons.CLE_SECRETE,
+        algorithm="HS256",
+    )
+    reponse = client.delete(
+        "/api/astronautes/1", headers={"Authorization": f"{jeton}"}
+    )
+    assert reponse.status_code == 401
+
+
+# Les lectures fonctionnent sans jeton : 200
+def test_lecture_sans_jeton(client):
+    reponse = client.get("/api/astronautes/1")
+    assert reponse.status_code == 200
+
+    reponse = client.get("/api/missions/1")
+    assert reponse.status_code == 200
+
+
+# /api/moi renvoie le bon utilisateur : 200
+def test_api_moi_renvoie_bon_utilisateur(client, entetes_auth):
+    reponse = client.get("/api/moi", headers=entetes_auth)
+    assert reponse.status_code == 200
     
+
