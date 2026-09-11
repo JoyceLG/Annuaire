@@ -2,14 +2,22 @@
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError, InvalidHashError
 
 from erreurs import (
     AstronauteIntrouvable,
+    EmailDejaUtilise,
+    IdentifiantsInvalides,
     MissionDejaExistante,
     MissionIntrouvable,
     DonneesInvalides,
 )
-from modeles import Astronaute, Mission
+from modeles import Astronaute, Mission, Utilisateur
+
+hacheur = PasswordHasher()
+
+EMPREINTE_FACTICE = hacheur.hash("mot-de-passe-qui-ne-sera-jamais-utilise")
 
 
 def trouver_astronaute(bdd, id_astronaute: int) -> Astronaute:
@@ -86,3 +94,31 @@ def creer_mission(bdd, champs: dict) -> Mission:
 
 def supprimer_mission(bdd, mission: Mission) -> None:
     bdd.delete(mission)
+
+
+def creer_utilisateur(bdd, email: str, mot_de_passe: str) -> Utilisateur:
+    if bdd.scalar(select(Utilisateur).where(Utilisateur.email == email)):
+        raise EmailDejaUtilise(email)
+
+    utilisateur = Utilisateur(email=email, empreinte=hacheur.hash(mot_de_passe))
+    try:
+        with bdd.begin_nested():
+            bdd.add(utilisateur)
+    except IntegrityError:
+        raise EmailDejaUtilise(email)
+    return utilisateur
+
+
+def verifier_identifiants(bdd, email: str, mot_de_passe: str) -> Utilisateur:
+    utilisateur = bdd.scalar(select(Utilisateur).where(Utilisateur.email == email))
+    if utilisateur is None:
+        try:
+            hacheur.verify(EMPREINTE_FACTICE, mot_de_passe)  # Simuler le hachage pour éviter les attaques par timing
+        except VerifyMismatchError:
+            pass
+        raise IdentifiantsInvalides()
+    try:
+        hacheur.verify(utilisateur.empreinte, mot_de_passe)
+    except VerifyMismatchError:
+        raise IdentifiantsInvalides()
+    return utilisateur

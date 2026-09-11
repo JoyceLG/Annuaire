@@ -2,6 +2,8 @@ from werkzeug.exceptions import HTTPException
 from erreurs import (
     AstronauteIntrouvable,
     DonneesInvalides,
+    EmailDejaUtilise,
+    IdentifiantsInvalides,
     MissionDejaExistante,
     MissionIntrouvable,
     MissionUtilisee,
@@ -46,7 +48,16 @@ def enregistrer_gestionnaires(app):
     def gerer_mission_utilisee(erreur):
         return {"erreur": str(erreur)}, 409
 
+    @app.errorhandler(EmailDejaUtilise)
+    def gerer_email_deja_utilise(erreur):
+        return {"erreur": str(erreur)}, 409
+
+    @app.errorhandler(IdentifiantsInvalides)
+    def gerer_identifiants_invalides(erreur):
+        return {"erreur": str(erreur)}, 401
+
     @app.errorhandler(Exception)
     def gerer_erreur_inattendue(erreur):
         app.logger.exception("Erreur non gérée")
         return {"erreur": "Erreur interne du serveur"}, 500
+

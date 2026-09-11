@@ -1,5 +1,13 @@
 from typing import Literal, Annotated
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, AfterValidator, StringConstraints
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    AfterValidator,
+    StringConstraints,
+    EmailStr,
+)
 
 
 def _non_vide(valeur: str) -> str:
@@ -9,8 +17,21 @@ def _non_vide(valeur: str) -> str:
     return nettoye
 
 
-Nom = Annotated[str, StringConstraints(min_length=1, max_length=100), AfterValidator(_non_vide)]
-Nationalite = Annotated[str, StringConstraints(min_length=1, max_length=50), AfterValidator(_non_vide)]
+def convertir_erreurs(erreur: ValidationError) -> dict[str, str]:
+    details = {}
+    for detail in erreur.errors():
+        champ = ".".join(str(p) for p in detail["loc"]) or "corps"
+        details[champ] = detail["msg"]
+    return details
+
+
+
+Nom = Annotated[
+    str, StringConstraints(min_length=1, max_length=100), AfterValidator(_non_vide)
+]
+Nationalite = Annotated[
+    str, StringConstraints(min_length=1, max_length=50), AfterValidator(_non_vide)
+]
 Role = Literal["commandant", "pilote", "specialiste"]
 MissionId = Annotated[int, Field(gt=0)]
 Annee = Annotated[int, Field(gt=1900)]
@@ -34,20 +55,23 @@ class AstronautePatch(BaseModel):
 
 class MissionEntree(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-
     nom: Nom
     annee: Annee
 
+
 class MissionPatch(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-
     nom: Nom | None = None
     annee: Annee | None = None
 
 
-def convertir_erreurs(erreur: ValidationError) -> dict[str, str]:
-    details = {}
-    for detail in erreur.errors():
-        champ = ".".join(str(p) for p in detail["loc"]) or "corps"
-        details[champ] = detail["msg"]
-    return details
+class InscriptionEntree(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    email: EmailStr
+    mot_de_passe: Annotated[str, StringConstraints(min_length=12, max_length=128)]
+
+
+class ConnexionEntree(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    email: EmailStr
+    mot_de_passe: Annotated[str, StringConstraints(min_length=1, max_length=128)]

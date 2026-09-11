@@ -1,4 +1,6 @@
 # modeles.py
+from datetime import UTC, datetime
+
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -45,3 +47,15 @@ class Astronaute(Base):
             "nationalite": self.nationalite,
             "mission_id": self.mission_id,
         }
+
+
+class Utilisateur(Base):
+    __tablename__ = "utilisateurs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    empreinte: Mapped[str] = mapped_column(String(255))
+    cree_le: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+
+    def en_dict(self) -> dict:
+        return {"id": self.id, "email": self.email}

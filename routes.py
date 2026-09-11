@@ -2,7 +2,7 @@ from flask import Blueprint, request, url_for
 from pydantic import ValidationError, BaseModel
 
 from session_web import session_bdd
-from erreurs import DonneesInvalides, MissionUtilisee
+from erreurs import DonneesInvalides, IdentifiantsInvalides, MissionUtilisee
 
 import schemas
 import donnees
@@ -222,3 +222,32 @@ def supprime_mission(id_mission: int):
     donnees.supprimer_mission(bdd, mission)
     bdd.commit()
     return "", 204
+
+
+@bp.post("/inscription")
+def inscription_utilisateur():
+    
+    donnees_entree = lire_corps(schemas.InscriptionEntree)
+
+    bdd = session_bdd()
+    nouvel_utilisateur = donnees.creer_utilisateur(bdd, donnees_entree["email"], donnees_entree["mot_de_passe"])
+    bdd.commit()
+
+    return (
+        nouvel_utilisateur.en_dict(),
+        201
+    )
+
+
+@bp.post("/connexion")
+def connexion_utilisateur():
+    
+    donnees_entree = lire_corps(schemas.ConnexionEntree)
+    
+    utilisateur = donnees.verifier_identifiants(session_bdd(), donnees_entree["email"], donnees_entree["mot_de_passe"])
+    
+    return {"message": "Connexion réussie", "utilisateur": utilisateur.en_dict()}, 200
+
+
+
+

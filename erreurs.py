@@ -30,3 +30,14 @@ class MissionUtilisee(ErreurApi):
     def __init__(self, id_mission: int):
         self.id_mission = id_mission
         super().__init__(f"La mission {id_mission} est utilisée par des astronautes et ne peut pas être supprimée")
+
+
+class EmailDejaUtilise(ErreurApi):
+    def __init__(self, email: str):
+        self.email = email
+        super().__init__(f"L'email {email} est déjà utilisé")
+    
+
+class IdentifiantsInvalides(ErreurApi):
+    def __init__(self):
+        super().__init__(f"Identifiants invalides")
