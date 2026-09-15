@@ -1,15 +1,19 @@
+"""Gestionnaires d'erreurs pour l'application Flask."""
+
 from werkzeug.exceptions import HTTPException
-from erreurs import (
+
+from .erreurs import (
     AstronauteIntrouvable,
     DonneesInvalides,
     EmailDejaUtilise,
     IdentifiantsInvalides,
+    JetonExpire,
+    JetonInvalide,
+    JetonManquant,
     MissionDejaExistante,
     MissionIntrouvable,
     MissionUtilisee,
-    JetonManquant,
-    JetonExpire,
-    JetonInvalide,
+    PermissionRefusee,
     UtilisateurIntrouvable,
 )
 
@@ -75,6 +79,10 @@ def enregistrer_gestionnaires(app):
     @app.errorhandler(JetonInvalide)
     def gerer_jeton_invalide(erreur):
         return {"erreur": str(erreur)}, 401
+
+    @app.errorhandler(PermissionRefusee)
+    def gerer_permission_refusee(erreur):
+        return {"erreur": str(erreur)}, 403
 
     @app.errorhandler(Exception)
     def gerer_erreur_inattendue(erreur):

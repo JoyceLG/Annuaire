@@ -1,12 +1,32 @@
 @base = http://127.0.0.1:5000/api
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiaWF0IjoxNzg5MDQ5OTI2LCJleHAiOjE3ODkwNTE3MjZ9.Eck6WGEVYNVk7zFTEeNbbSGFDVTBTZiKd3lXUjZw7hw
 
-### Jeu de données de départ, après `python peupler.py` sur une base neuve :
+### Jetons : les obtenir avec les requêtes « Connexion » de la section UTILISATEURS,
+### puis coller la valeur de `jeton` ici. Ils expirent au bout de 30 minutes.
+@jeton_lecteur = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzIiwiaWF0IjoxNzg5NDc1MTQyLCJleHAiOjE3ODk0NzY5NDJ9.OUPHPXewNNhSWgT1ycdY4BP4tvnyBieiyJX3PoR0Qik
+@jeton_editeur = colle-ici-le-jeton-de-editeur@example.com
+@jeton_admin = colle-ici-le-jeton-de-admin@example.com
+
+### Jeu de données de départ, après `flask peupler` sur une base neuve :
 ###   missions      1 Apollo 11 (1969) · 2 Apollo 12 (1969) · 3 Apollo 14 (1971)
 ###   astronautes   1 Armstrong · 2 Bean · 3 Conrad · 4 Mitchell · 5 Shepard
+### Pour repartir de ces identifiants :
+###   rm astronautes.db && alembic upgrade head && flask peupler
+###
+### Toute inscription crée un LECTEUR. Les autres rôles s'obtiennent en ligne
+### de commande, aucune route ne les expose :
+###   flask promouvoir editeur@example.com editeur
+###   flask promouvoir admin@example.com admin
+###
+### Rappel des permissions (annuaire/permissions.py) :
+###   lecteur   lire
+###   editeur   lire, creer, modifier
+###   admin     lire, creer, modifier, supprimer, administrer
+###
+### Les commandes `flask` supposent FLASK_APP défini — voir le README.
+###
+### Les lectures (GET) sont publiques ; toutes les écritures exigent un jeton.
 ### Les créations et suppressions sont regroupées en fin de section, pour que
-### les lectures restent jouables dans l'ordre. Pour repartir de ces
-### identifiants : rm astronautes.db && alembic upgrade head && python peupler.py
+### les lectures restent jouables dans l'ordre.
 
 
 ### ========================= ASTRONAUTES =========================
@@ -14,19 +34,19 @@
 ### Liste complète
 GET {{base}}/astronautes
 
-### Filtre par rôle
+### Filtre par rôle (recherche partielle)
 GET {{base}}/astronautes?role=commandant
 
-### Filtre par mission (sur le nom de la mission, recherche partielle)
+### Filtre par mission (identifiant de la mission)
 GET {{base}}/astronautes?mission_id=2
 
 ### Filtres combinés
 GET {{base}}/astronautes?role=commandant&mission_id=2
 
 ### Filtre sans résultat → 200 et tableau vide
-GET {{base}}/astronautes?mission_id=Soyouz
+GET {{base}}/astronautes?role=cosmonaute
 
-### Filtre avec mission_id en string → 400 
+### Filtre avec un mission_id non numérique → 400
 GET {{base}}/astronautes?mission_id=Soyouz
 
 ### Lire un astronaute
@@ -38,127 +58,146 @@ GET {{base}}/astronautes/999
 ### Identifiant 0 → 404 (refusé par le convertisseur <int(min=1)>)
 GET {{base}}/astronautes/0
 
-### Création valide → 201 + Location
-### `mission` est l'identifiant de la mission, en chaîne de caractères.
+### Création valide → 201 + Location (permission `creer`)
 POST {{base}}/astronautes
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "Michael Collins", "role": "pilote", "mission_id": 1, "nationalite": "Etats-Unis"}
 
 ### Création avec une mission inexistante → 404
 POST {{base}}/astronautes
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "Michael Collins", "role": "pilote", "mission_id": 999, "nationalite": "Etats-Unis"}
 
 ### Création avec un nom de mission au lieu de son id → 400
 POST {{base}}/astronautes
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "Michael Collins", "role": "pilote", "mission_id": "Apollo 14", "nationalite": "Etats-Unis"}
 
 ### Création avec un rôle invalide → 400
 POST {{base}}/astronautes
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "Michael Collins", "role": "cosmonaute", "mission_id": 1, "nationalite": "Etats-Unis"}
 
 ### Création avec un champ manquant → 400
 POST {{base}}/astronautes
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "Michael Collins", "role": "pilote", "mission_id": 1}
 
 ### Création avec un champ inconnu → 400
 POST {{base}}/astronautes
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
-{"nom": "X", "role": "pilote", "mission_id": "1", "nationalite": "Etats-Unis", "salaire": 50000}
+{"nom": "X", "role": "pilote", "mission_id": 1, "nationalite": "Etats-Unis", "salaire": 50000}
 
 ### Corps vide → 400
 POST {{base}}/astronautes
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {}
 
 ### JSON mal formé → 400
 POST {{base}}/astronautes
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {invalide}
 
-### Remplacement complet → 200
+### Remplacement complet → 200 (permission `modifier`)
 PUT {{base}}/astronautes/2
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "Alan Bean", "role": "commandant", "mission_id": 2, "nationalite": "Etats-Unis"}
 
 ### PUT incomplet → 400 (tous les champs sont requis)
 PUT {{base}}/astronautes/2
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "Alan Bean"}
 
 ### Modification partielle → 200
 PATCH {{base}}/astronautes/3
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"role": "pilote"}
 
 ### Changement de mission → 200
 PATCH {{base}}/astronautes/3
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"mission_id": 3}
 
 ### PATCH avec corps vide → 400
 PATCH {{base}}/astronautes/3
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {}
 
 ### PATCH avec corps null → 400
 PATCH {{base}}/astronautes/3
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": null}
 
 ### PATCH avec un nom vide → 400
 PATCH {{base}}/astronautes/3
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": ""}
 
-### PATCH avec un nom rempli d'espaces → 400 (nettoye, il devient vide)
+### PATCH avec un nom rempli d'espaces → 400 (nettoyé, il devient vide)
 PATCH {{base}}/astronautes/3
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "   "}
 
 ### PATCH avec une nationalite vide → 400
 PATCH {{base}}/astronautes/3
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nationalite": ""}
 
 ### PATCH avec mission_id à 0 → 400 (un identifiant vaut au moins 1)
 PATCH {{base}}/astronautes/3
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"mission_id": 0}
 
 ### PATCH avec une mission inexistante → 404
 PATCH {{base}}/astronautes/3
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"mission_id": 999}
 
-
-### Suppression → 204
+### Suppression → 204 (permission `supprimer`, donc admin)
 DELETE {{base}}/astronautes/5
+Authorization: Bearer {{jeton_admin}}
 
 ### Suppression d'un inexistant → 404
 DELETE {{base}}/astronautes/999
+Authorization: Bearer {{jeton_admin}}
 
 
 ### ========================== MISSIONS ===========================
@@ -184,131 +223,280 @@ GET {{base}}/missions/2/astronautes
 ### Équipage d'une mission inexistante → 404
 GET {{base}}/missions/999/astronautes
 
-### Création valide → 201 + Location
+### Création valide → 201 + Location (le programme est déduit du nom)
 POST {{base}}/missions
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "Apollo 13", "annee": 1970}
 
 ### Création avec un programme fourni → 400 (champ déduit, donc inconnu)
 POST {{base}}/missions
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "Gemini 4", "programme": "Gemini", "annee": 1965}
 
 ### Création avec une année en chaîne → 400
 POST {{base}}/missions
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "Gemini 4", "annee": "1965"}
 
 ### Création avec une année en booléen → 400
 POST {{base}}/missions
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "Gemini 4", "annee": true}
+
+### Création avec une année antérieure à 1900 → 400
+POST {{base}}/missions
+Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
+
+{"nom": "Gemini 4", "annee": 1500}
 
 ### Création avec un nom déjà pris → 409
 POST {{base}}/missions
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "Apollo 11", "annee": 1969}
 
 ### Création avec un champ manquant → 400
 POST {{base}}/missions
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "Gemini 4"}
 
 ### Création avec un champ inconnu → 400
 POST {{base}}/missions
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "Gemini 4", "annee": 1965, "cout": 500000000}
 
 ### Remplacement complet d'une mission → 200
 PUT {{base}}/missions/1
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "Apollo 11", "annee": 1969}
 
 ### Modification partielle d'une mission → 200
 PATCH {{base}}/missions/2
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"annee": 1969}
 
 ### PATCH avec une année antérieure à 1900 → 400
 PATCH {{base}}/missions/2
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"annee": 1500}
 
 ### PATCH avec un nom de mission vide → 400
 PATCH {{base}}/missions/2
 Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
 
 {"nom": "   "}
 
 ### Suppression d'une mission sans équipage → 204
 ### (Apollo 13, créée plus haut ; ajuster l'id si la base a déjà servi)
 DELETE {{base}}/missions/4
+Authorization: Bearer {{jeton_admin}}
 
 ### Suppression d'une mission inexistante → 404
 DELETE {{base}}/missions/999
+Authorization: Bearer {{jeton_admin}}
 
 ### Suppression d'une mission qui a encore un équipage → 409
 ### La mission est protégée tant qu'un astronaute la référence (MissionUtilisee).
 DELETE {{base}}/missions/2
+Authorization: Bearer {{jeton_admin}}
 
 
-# =================== UTILISATEURS ===========================
+### ======================== UTILISATEURS =========================
 
-### Inscription d'un nouvel utilisateur
+### Inscription → 201 (rôle `lecteur` par défaut)
 POST {{base}}/inscription
 Content-Type: application/json
 
-{"email": "nouvel.utilisateur@example.com", "mot_de_passe": "motdepassevalide"}
+{"email": "lecteur@example.com", "mot_de_passe": "motdepassevalide"}
 
-### Connexion d'un utilisateur existant
+### Inscription du futur éditeur, à promouvoir ensuite en ligne de commande
+POST {{base}}/inscription
+Content-Type: application/json
+
+{"email": "editeur@example.com", "mot_de_passe": "motdepassevalide"}
+
+### Inscription du futur admin, à promouvoir ensuite en ligne de commande
+POST {{base}}/inscription
+Content-Type: application/json
+
+{"email": "admin@example.com", "mot_de_passe": "motdepassevalide"}
+
+### Inscription avec un e-mail déjà pris → 409
+POST {{base}}/inscription
+Content-Type: application/json
+
+{"email": "lecteur@example.com", "mot_de_passe": "motdepassevalide"}
+
+### Inscription avec un e-mail invalide → 400
+POST {{base}}/inscription
+Content-Type: application/json
+
+{"email": "pas-un-email", "mot_de_passe": "motdepassevalide"}
+
+### Inscription avec un mot de passe trop court → 400 (12 caractères minimum)
+POST {{base}}/inscription
+Content-Type: application/json
+
+{"email": "court@example.com", "mot_de_passe": "court"}
+
+### Inscription avec un champ inconnu → 400 (le rôle ne se choisit pas)
+POST {{base}}/inscription
+Content-Type: application/json
+
+{"email": "malin@example.com", "mot_de_passe": "motdepassevalide", "role": "admin"}
+
+### Connexion → 200, renvoie le jeton à recopier en haut du fichier
 POST {{base}}/connexion
 Content-Type: application/json
 
-{"email": "nouvel.utilisateur@example.com", "mot_de_passe": "motdepassevalide"}
+{"email": "lecteur@example.com", "mot_de_passe": "motdepassevalide"}
+
+### Connexion de l'éditeur → 200
+POST {{base}}/connexion
+Content-Type: application/json
+
+{"email": "editeur@example.com", "mot_de_passe": "motdepassevalide"}
+
+### Connexion de l'admin → 200
+POST {{base}}/connexion
+Content-Type: application/json
+
+{"email": "admin@example.com", "mot_de_passe": "motdepassevalide"}
 
 ### Connexion avec un mot de passe incorrect → 401
 POST {{base}}/connexion
 Content-Type: application/json
 
-{"email": "nouvel.utilisateur@example.com", "mot_de_passe": "mauvaismotdepasse"}
+{"email": "lecteur@example.com", "mot_de_passe": "mauvaismotdepasse"}
 
-### Connexion avec un utilisateur inexistant → 404
+### Connexion avec un utilisateur inexistant → 401
+### Même code et même délai qu'un mot de passe faux : l'API ne dit pas
+### si l'adresse existe (vérification factice côté `donnees`).
 POST {{base}}/connexion
 Content-Type: application/json
 
-{"email": "inexistant@example.com", "mot_de_passe": "motdepasse"}
+{"email": "inexistant@example.com", "mot_de_passe": "motdepassevalide"}
 
-### Affiche l'utilisateur actuel
+### Affiche l'utilisateur authentifié → 200
 GET {{base}}/moi
-Authorization: Bearer {{token}}
+Authorization: Bearer {{jeton_lecteur}}
+
+### Un lecteur change sa propre adresse → 200
+PATCH {{base}}/utilisateurs/3
+Content-Type: application/json
+Authorization: Bearer {{jeton_lecteur}}
+
+{"email": "lecteur.renomme@example.com"}
+
+### Un éditeur change sa propre adresse → 200
+PATCH {{base}}/utilisateurs/2
+Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
+
+{"email": "editeur.renomme@example.com"}
+
+### Un éditeur change l'adresse d'autrui → 403 (il lui manque `administrer`)
+PATCH {{base}}/utilisateurs/1
+Content-Type: application/json
+Authorization: Bearer {{jeton_editeur}}
+
+{"email": "pirate@example.com"}
+
+### Un admin change l'adresse d'autrui → 200
+PATCH {{base}}/utilisateurs/1
+Content-Type: application/json
+Authorization: Bearer {{jeton_admin}}
+
+{"email": "lecteur.renomme@example.com"}
+
+### Un utilisateur inexistant → 404
+PATCH {{base}}/utilisateurs/999
+Content-Type: application/json
+Authorization: Bearer {{jeton_admin}}
+
+{"email": "fantome@example.com"}
+
+### Tentative d'auto-promotion → 400 (`role` est un champ inconnu du schéma)
+### À relire ensuite avec GET /moi : le rôle n'a pas bougé.
+PATCH {{base}}/utilisateurs/3
+Content-Type: application/json
+Authorization: Bearer {{jeton_admin}}
+
+{"role": "admin"}
 
 
-# =================== ACCÈS PROTÉGÉ ===========================
+### ======================== PERMISSIONS ==========================
+### Même requête, trois jetons : c'est le rôle qui décide.
 
-### Accès à une ressource protégée sans authentification → 401
+### Créer avec un jeton lecteur → 403 (permission `creer` manquante)
+POST {{base}}/astronautes
+Content-Type: application/json
+Authorization: Bearer {{jeton_lecteur}}
+
+{"nom": "Jim Lovell", "role": "commandant", "mission_id": 1, "nationalite": "Etats-Unis"}
+
+### Modifier avec un jeton lecteur → 403 (permission `modifier` manquante)
+PATCH {{base}}/astronautes/1
+Content-Type: application/json
+Authorization: Bearer {{jeton_lecteur}}
+
+{"role": "pilote"}
+
+### Supprimer avec un jeton lecteur → 403
+DELETE {{base}}/astronautes/1
+Authorization: Bearer {{jeton_lecteur}}
+
+### Supprimer avec un jeton éditeur → 403 (permission `supprimer` réservée à l'admin)
+DELETE {{base}}/astronautes/1
+Authorization: Bearer {{jeton_editeur}}
+
+### Supprimer avec un jeton admin → 204
+DELETE {{base}}/astronautes/4
+Authorization: Bearer {{jeton_admin}}
+
+
+### ====================== AUTHENTIFICATION =======================
+
+### Lecture sans jeton → 200 : les GET sont publics
 GET {{base}}/astronautes/1
 
-### Accès à une ressource protégée avec un token manquant → 401
+### Écriture sans en-tête Authorization → 401
 DELETE {{base}}/astronautes/1
 
-### Accès à une ressource protégée avec un token invalide → 401
+### Écriture avec un jeton illisible → 401
 DELETE {{base}}/astronautes/1
 Authorization: Bearer nimportequoi
 
-### Accès à une ressource protégée avec un token manquant → 401
+### Écriture sans le préfixe `Bearer ` → 401
 DELETE {{base}}/astronautes/1
-Authorization: {{token}}
+Authorization: {{jeton_admin}}
 
-### Accès à une ressource protégée avec un token valide → 204
-DELETE {{base}}/astronautes/7
-Authorization: Bearer {{token}}
+### Écriture avec un jeton signé par une autre clé → 401
+DELETE {{base}}/astronautes/1
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDE4MDB9.9yCm2sPfQ0DCM1ZyDrYaQ8hFk2A0XnJv6fEXPXFcLk0
+
+### Écriture avec un jeton expiré → 401
+### À rejouer avec {{jeton_admin}} plus de 30 minutes après l'avoir obtenu.
+DELETE {{base}}/astronautes/1
+Authorization: Bearer {{jeton_admin}}

@@ -1,12 +1,15 @@
-from typing import Literal, Annotated
+"""Schémas Pydantic pour la validation des corps de requête."""
+
+from typing import Annotated, Literal
+
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
-    Field,
-    ValidationError,
-    AfterValidator,
-    StringConstraints,
     EmailStr,
+    Field,
+    StringConstraints,
+    ValidationError,
 )
 
 
@@ -70,6 +73,10 @@ class InscriptionEntree(BaseModel):
     email: EmailStr
     mot_de_passe: Annotated[str, StringConstraints(min_length=12, max_length=128)]
 
+
+class UtilisateurPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    email: EmailStr
 
 class ConnexionEntree(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)

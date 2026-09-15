@@ -1,8 +1,11 @@
-# modeles.py
+"""Modèles de données pour l'application."""
+
 from datetime import UTC, datetime
 
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from .permissions import RoleUtilisateur
 
 
 class Base(DeclarativeBase):
@@ -57,6 +60,7 @@ class Utilisateur(Base):
     empreinte: Mapped[str] = mapped_column(String(255))
     cree_le: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
     derniere_connexion: Mapped[datetime | None] = mapped_column(default=None)
+    role: Mapped[str] = mapped_column(String(20), default=RoleUtilisateur.LECTEUR)
 
     def en_dict(self) -> dict:
-        return {"id": self.id, "email": self.email, "derniere_connexion": self.derniere_connexion}
+        return {"id": self.id, "email": self.email, "derniere_connexion": self.derniere_connexion, "role": self.role}

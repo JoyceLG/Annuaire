@@ -10,7 +10,8 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from modeles import Base
+from annuaire.config import Config
+from annuaire.modeles import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -26,6 +27,10 @@ if config.config_file_name is not None:
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 target_metadata = Base.metadata
+
+# L'URL vient d'`annuaire.config`, pas d'alembic.ini : application et migrations
+# ne peuvent plus travailler sur deux bases différentes.
+config.set_main_option("sqlalchemy.url", Config.URL_BASE)
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

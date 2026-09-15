@@ -1,3 +1,5 @@
+"""Erreurs métier pour l'API."""
+
 class ErreurApi(Exception):
     """Classe de base pour les erreurs métier."""
 
@@ -40,7 +42,7 @@ class EmailDejaUtilise(ErreurApi):
 
 class IdentifiantsInvalides(ErreurApi):
     def __init__(self):
-        super().__init__(f"Identifiants invalides")
+        super().__init__("Identifiants invalides")
 
 
 class UtilisateurIntrouvable(ErreurApi):
@@ -51,14 +53,20 @@ class UtilisateurIntrouvable(ErreurApi):
 
 class JetonManquant(ErreurApi):
     def __init__(self):
-        super().__init__(f"Le jeton est manquant")
+        super().__init__("Le jeton est manquant")
 
 
 class JetonExpire(ErreurApi):
     def __init__(self):
-        super().__init__(f"Le jeton a expiré")
+        super().__init__("Le jeton a expiré")
 
 
 class JetonInvalide(ErreurApi):
     def __init__(self):
-        super().__init__(f"Le jeton est invalide")
+        super().__init__("Le jeton est invalide")
+
+
+class PermissionRefusee(ErreurApi):
+    def __init__(self, permission: str):
+        self.permission = permission
+        super().__init__(f"Permission refusée pour {permission}")
