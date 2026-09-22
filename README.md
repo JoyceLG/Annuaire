@@ -1,31 +1,29 @@
-# Annuaire des astronautes — Session 17 : permissions et failles courantes
+# Annuaire des astronautes — Session 18 : journal applicatif
 
 API REST sur SQLite, avec authentification JWT, rôles, migrations Alembic et
-tests pytest. Le module plat devient un paquet `annuaire/`.
+tests pytest. Les logs ne sont plus ceux du serveur de développement.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- **RBAC explicite** : `PERMISSIONS: dict[str, set[str]]` dit noir sur blanc ce
-  que chaque rôle a le droit de faire, et le décorateur `permission_requise`
-  est le seul endroit qui consulte cette table.
-- **Fail-closed.** Le hook `refuser_par_defaut` refuse toute vue qui ne s'est
-  pas déclarée — oublier un décorateur ferme la route au lieu de l'ouvrir.
-  `test_toutes_les_vues_sont_declarees` échoue si une vue oublie de le faire.
-- **Élévation horizontale** : un utilisateur légitime qui atteint la ressource
-  d'un autre. La possession se vérifie, elle ne se suppose pas.
-- **Élévation par le corps de requête** : un champ `role` glissé dans un
-  `PATCH` de profil. Aucune route n'expose le rôle ; le premier admin se crée
-  en ligne de commande.
-- **Autoriser d'abord, charger ensuite, valider seulement après.** Vérifier la
-  permission *après* avoir chargé la ressource laisse distinguer un compte
-  existant d'un compte absent par le code HTTP (403 contre 404) : c'est une
-  fuite d'information.
-- Réorganisation en paquet `annuaire/`, avec une **app factory** et des classes
-  de configuration : tout paramètre sensible est lu via `current_app.config`
-  au moment de l'appel, plus à l'import du module.
+- **Un journal structuré en JSON** (`annuaire/journal.py`). Un log destiné à
+  une machine se cherche et s'agrège ; une phrase libre ne se cherche qu'à
+  l'œil, et seulement si on sait déjà quoi chercher.
+- **Un identifiant par requête**, posé sur `g` et injecté dans chaque
+  enregistrement par `FiltreRequeteId` : c'est ce qui permet de recoller les
+  lignes d'une même requête au milieu de celles de tous les autres clients.
+- **Le niveau de log dépend de l'environnement** : `DEBUG` en développement,
+  `WARNING` en test pour que la sortie de `pytest` reste lisible.
+- **Ce qu'on ne journalise jamais** : un mot de passe, un jeton complet, une
+  empreinte. Un journal se lit, se copie et s'expédie à un agrégateur — tout ce
+  qu'on y écrit est publié.
+- Le mode debug **désactivé en production**, et ce que ça change concrètement :
+  plus de trace Python dans la réponse, donc plus de chemin de fichiers ni de
+  console interactive offerts au premier venu.
+- Les séquences ANSI de werkzeug sont nettoyées avant sérialisation, sans quoi
+  `json.dumps` les échappe en `\u001b[31m` et rend la ligne illisible.
 
 ## Lancer
 
@@ -40,7 +38,7 @@ export FLASK_APP="annuaire:creer_app"      # évite de répéter --app à chaque
 alembic upgrade head                        # créer / migrer la base
 flask peupler                               # 3 missions, 5 astronautes
 flask run --debug                           # http://127.0.0.1:5000
-pytest -q                                   # 93 tests
+pytest -q                                   # 97 tests
 ```
 
 ## Organisation des fichiers
@@ -55,6 +53,7 @@ annuaire/              le paquet applicatif
 ├── donnees/           accès à la base, un module par agrégat, sans Flask
 ├── erreurs.py         les exceptions métier
 ├── gestionnaires.py   exception métier → code HTTP
+├── journal.py         journal JSON, niveau par environnement, id de requête
 ├── permissions.py     rôles et table des permissions
 ├── securite.py        hachage, jetons JWT, décorateurs d'accès
 ├── cli.py             flask promouvoir, flask peupler
@@ -89,6 +88,9 @@ flask promouvoir camille@example.com admin
 - **Rien n'est lu à l'import.** La clé JWT, le coût du hachage et l'URL sont
   lus à la création de l'application. `creer_app` refuse de démarrer si
   `CLE_SECRETE_JWT` est vide.
+- **Le journal est configuré par la fabrique.** `configurer_journal(app)` est
+  appelé dans `creer_app` : une application de test a donc son propre niveau
+  de log, sans variable globale à remettre en place après coup.
 - **Les tests ne touchent pas `astronautes.db`.** Chacun reçoit une application
   neuve sur une base SQLite en mémoire (`ConfigTest`), sans `monkeypatch`.
 - Repartir de zéro : `rm astronautes.db && alembic upgrade head && flask peupler`.

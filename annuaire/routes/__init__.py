@@ -3,7 +3,7 @@
 from flask import Flask
 
 from . import astronautes, missions, utilisateurs
-from .commun import refuser_par_defaut
+from .commun import refuser_par_defaut, demarrer_requete, terminer_requete
 
 BLUEPRINTS = (astronautes.bp, missions.bp, utilisateurs.bp)
 
@@ -15,3 +15,5 @@ def enregistrer_blueprints(app: Flask) -> None:
     # Posé sur l'application et non sur un blueprint : une vue ajoutée hors
     # blueprint doit elle aussi se déclarer publique ou protégée.
     app.before_request(refuser_par_defaut)
+    app.before_request(demarrer_requete)
+    app.after_request(terminer_requete)

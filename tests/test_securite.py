@@ -4,6 +4,8 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 import jwt
+import logging
+
 from flask import Blueprint
 
 from annuaire.routes.commun import publique
@@ -182,3 +184,36 @@ def test_garde_fou_laisse_passer_une_vue_publique(app):
     app.register_blueprint(bp_tardif)
 
     assert app.test_client().get("/api/route-publique").status_code == 200
+
+
+def test_aucun_secret_dans_les_logs(client, caplog):
+    with caplog.at_level(logging.DEBUG):
+        client.post("/api/inscription", json={
+            "email": "fuite@x.fr", "mot_de_passe": "motdepassetressecret",
+        })
+        reponse = client.post("/api/connexion", json={
+            "email": "fuite@x.fr", "mot_de_passe": "motdepassetressecret",
+        })
+        jeton = reponse.get_json()["jeton"]
+        client.get("/api/moi", headers={"Authorization": f"Bearer {jeton}"})
+
+    tout = caplog.text
+    assert "motdepassetressecret" not in tout
+    assert jeton not in tout
+    assert "$argon2" not in tout
+
+
+def test_identifiant_de_correlation_present(client):
+    reponse = client.get("/api/astronautes")
+    assert "X-Request-ID" in reponse.headers
+
+
+def test_debug_desactive_en_production(app):
+    # ConfigProd.DEBUG doit être False
+    assert not app.config["DEBUG"]
+
+
+def test_reponse_401_ne_cite_jamais_l_email(client):
+    reponse = client.post("/api/connexion",
+        json={"email": "cible@example.com", "mot_de_passe": "mauvais"})
+    assert "cible@example.com" not in reponse.get_data(as_text=True)

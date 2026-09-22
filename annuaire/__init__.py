@@ -16,9 +16,9 @@ from .config import Config
 from .gestionnaires import enregistrer_gestionnaires
 from .routes import enregistrer_blueprints
 from .securite import initialiser_hachage
+from .journal import configurer_journal
 
 __all__ = ["creer_app"]
-
 
 def creer_app(config: type[Config] = Config, **surcharges) -> Flask:
     """Construit une application. Les surcharges priment sur la configuration."""
@@ -39,4 +39,6 @@ def creer_app(config: type[Config] = Config, **surcharges) -> Flask:
     enregistrer_gestionnaires(app)
     enregistrer_blueprints(app)
     enregistrer_commandes(app)
+    configurer_journal(app)
     return app
+

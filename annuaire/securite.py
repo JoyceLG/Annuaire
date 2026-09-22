@@ -6,6 +6,7 @@ Tout ce qui est réglable (clé, durée, coût du hachage) est lu dans
 
 from datetime import UTC, datetime
 from functools import wraps
+from typing import Any, cast
 
 import jwt
 from argon2 import PasswordHasher
@@ -47,6 +48,15 @@ def hacher(mot_de_passe: str) -> str:
     return current_app.extensions["hacheur"].hash(mot_de_passe)
 
 
+def recuperer_ip() -> str:
+    """Renvoie l'adresse IP du client."""
+    
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+    if ip is None:
+        ip = "0.0.0.0"
+    return ip
+
+
 def verifier_identifiants(bdd: Session, email: str, mot_de_passe: str) -> Utilisateur:
     """Renvoie l'utilisateur, ou lève `IdentifiantsInvalides`.
 
@@ -61,12 +71,12 @@ def verifier_identifiants(bdd: Session, email: str, mot_de_passe: str) -> Utilis
             hacheur.verify(current_app.extensions["empreinte_factice"], mot_de_passe)
         except VerifyMismatchError:
             pass
-        raise IdentifiantsInvalides()
+        raise IdentifiantsInvalides(email, recuperer_ip())
 
     try:
         hacheur.verify(utilisateur.empreinte, mot_de_passe)
     except VerifyMismatchError:
-        raise IdentifiantsInvalides()
+        raise IdentifiantsInvalides(email, recuperer_ip())
     return utilisateur
 
 
@@ -92,9 +102,9 @@ def lire_jeton(jeton: str) -> int:
             jeton, current_app.config["CLE_SECRETE_JWT"], algorithms=["HS256"]
         )
     except jwt.ExpiredSignatureError:
-        raise JetonExpire()
+        raise JetonExpire(tronquer_jeton(jeton))
     except jwt.InvalidTokenError:
-        raise JetonInvalide()
+        raise JetonInvalide(tronquer_jeton(jeton))
     return int(charge["sub"])
 
 
@@ -103,6 +113,11 @@ def jeton_de_la_requete() -> str:
     if not entete.startswith("Bearer "):
         raise JetonManquant()
     return entete.removeprefix("Bearer ")
+
+
+def tronquer_jeton(jeton: str) -> str:
+    """Renvoie les 8 premiers caractères du jeton, pour affichage/log."""
+    return jeton[:8]
 
 
 # ============================== DÉCORATEURS ===============================
@@ -125,7 +140,7 @@ def authentification_requise(fonction):
         return fonction(*args, **kwargs)
 
     # Marque lue par `refuser_par_defaut` : cette vue contrôle bien ses accès.
-    enveloppe.protegee = True
+    cast(Any, enveloppe).protegee = True
     return enveloppe
 
 
@@ -141,10 +156,10 @@ def permission_requise(permission: str):
         def enveloppe(*args, **kwargs):
             utilisateur = _charger_utilisateur()
             if not a_la_permission(utilisateur.role, permission):
-                raise PermissionRefusee(permission)
+                raise PermissionRefusee(permission, utilisateur.email, request.path)
             return fonction(*args, **kwargs)
 
-        enveloppe.protegee = True
+        cast(Any, enveloppe).protegee = True
         return enveloppe
 
     return decorateur

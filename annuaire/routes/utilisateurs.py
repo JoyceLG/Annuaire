@@ -1,5 +1,7 @@
 """Routes pour la gestion des utilisateurs."""
 
+import logging
+
 from datetime import UTC, datetime
 
 from flask import Blueprint, g
@@ -14,6 +16,7 @@ from ..securite import authentification_requise
 from .commun import lire_corps, publique
 
 bp = Blueprint("utilisateurs", __name__, url_prefix="/api")
+logger = logging.getLogger(__name__)
 
 
 @bp.post("/inscription")
@@ -41,14 +44,14 @@ def connecter():
         bdd, champs["email"], champs["mot_de_passe"]
     )
 
-    # Photographié avant le commit : après, l'objet serait expiré et relirait
-    # la base pour chaque attribut.
     resume = utilisateur.en_dict()
     jeton = securite.creer_jeton(utilisateur.id)
 
     utilisateur.derniere_connexion = datetime.now(UTC)
     bdd.commit()
 
+    logger.info(f"Utilisateur {utilisateur.id} connecté à {utilisateur.derniere_connexion}")
+    
     return {"jeton": jeton, "utilisateur": resume}, 200
 
 
@@ -67,7 +70,7 @@ def modifier(id_utilisateur: int):
     if g.utilisateur.id != id_utilisateur and not a_la_permission(
         g.utilisateur.role, "administrer"
     ):
-        raise PermissionRefusee("modifier autrui")
+        raise PermissionRefusee(permission="modifier autrui", utilisateur=g.utilisateur.email, chemin=f"/utilisateurs/{id_utilisateur}")
 
     champs = lire_corps(schemas.UtilisateurPatch, partiel=True)
 

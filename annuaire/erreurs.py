@@ -41,14 +41,16 @@ class EmailDejaUtilise(ErreurApi):
     
 
 class IdentifiantsInvalides(ErreurApi):
-    def __init__(self):
-        super().__init__("Identifiants invalides")
+    def __init__(self, email: str, ip: str):
+        self.email = email
+        self.ip = ip
+        super().__init__(f"Identifiants invalides")
 
 
 class UtilisateurIntrouvable(ErreurApi):
     def __init__(self, id_utilisateur: int):
         self.id_utilisateur = id_utilisateur
-        super().__init__(f"L'utilisateur {id_utilisateur} n'existe pas")
+        super().__init__(f"L'utilisateur n'existe pas")
 
 
 class JetonManquant(ErreurApi):
@@ -57,16 +59,20 @@ class JetonManquant(ErreurApi):
 
 
 class JetonExpire(ErreurApi):
-    def __init__(self):
-        super().__init__("Le jeton a expiré")
+    def __init__(self, jeton_court: str):
+        self.jeton_court = jeton_court
+        super().__init__(f"Le jeton a expiré")
 
 
 class JetonInvalide(ErreurApi):
-    def __init__(self):
-        super().__init__("Le jeton est invalide")
+    def __init__(self, jeton_court: str):
+        self.jeton_court = jeton_court
+        super().__init__(f"Le jeton est invalide")
 
 
 class PermissionRefusee(ErreurApi):
-    def __init__(self, permission: str):
+    def __init__(self, permission: str, utilisateur: str, chemin: str):
         self.permission = permission
-        super().__init__(f"Permission refusée pour {permission}")
+        self.utilisateur = utilisateur
+        self.chemin = chemin
+        super().__init__(f"Permission refusée")

@@ -1,6 +1,9 @@
 """Outils partagés par les blueprints : lecture du corps et garde-fou d'accès."""
 
-from flask import current_app, request
+import uuid
+import time
+
+from flask import current_app, request, g
 from pydantic import BaseModel, ValidationError
 
 from .. import schemas
@@ -31,8 +34,21 @@ def refuser_par_defaut():
     vue = current_app.view_functions.get(request.endpoint)
     if getattr(vue, "publique", False) or getattr(vue, "protegee", False):
         return
-    raise PermissionRefusee(f"{request.endpoint} non déclarée")
+    raise PermissionRefusee(permission="accès", utilisateur="inconnu", chemin=f"{request.endpoint} non déclarée")
 
+
+def demarrer_requete():
+    """Initialise les informations de suivi pour la requête en cours."""
+    
+    g.requete_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
+    g.debut = time.perf_counter()
+
+
+def terminer_requete(reponse):
+    """Ajoute l'ID de requête aux en-têtes de la réponse HTTP."""
+    
+    reponse.headers["X-Request-ID"] = g.get("requete_id", "-")
+    return reponse
 
 def lire_corps(modele: type[BaseModel], partiel: bool = False) -> dict:
     """Lit le corps JSON, le valide contre le modèle, renvoie un dict de champs."""

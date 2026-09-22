@@ -27,6 +27,9 @@ class Config:
     ARGON2_TEMPS = 3
     ARGON2_MEMOIRE = 65536
     ARGON2_PARALLELISME = 4
+    
+    # Niveau de journalisation par défaut pour l'application Flask.
+    NIVEAU_LOG = "DEBUG"
 
 
 class ConfigTest(Config):
@@ -39,3 +42,6 @@ class ConfigTest(Config):
     ARGON2_TEMPS = 1
     ARGON2_MEMOIRE = 8
     ARGON2_PARALLELISME = 1
+    
+    # Niveau de journalisation pour les tests.
+    NIVEAU_LOG = "WARNING"

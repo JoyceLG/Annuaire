@@ -12,6 +12,11 @@ from .commun import lire_corps, publique
 bp = Blueprint("astronautes", __name__, url_prefix="/api")
 
 
+@bp.get("/plante")
+@publique
+def plante():
+    return 1 / 0
+
 @bp.get("/astronautes/<int(min=1):id_astronaute>")
 @publique
 def lire(id_astronaute: int):

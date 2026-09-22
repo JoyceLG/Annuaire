@@ -500,3 +500,9 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiaWF0I
 ### À rejouer avec {{jeton_admin}} plus de 30 minutes après l'avoir obtenu.
 DELETE {{base}}/astronautes/1
 Authorization: Bearer {{jeton_admin}}
+
+
+### ====================== ERREURS =======================
+
+### Erreur → 500
+GET {{base}}/plante
