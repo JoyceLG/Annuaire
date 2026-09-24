@@ -1,6 +1,6 @@
 """Schémas Pydantic pour la validation des corps de requête."""
 
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import (
     AfterValidator,
@@ -10,6 +10,16 @@ from pydantic import (
     Field,
     StringConstraints,
     ValidationError,
+)
+
+from .contraintes import (
+    ANNEE_MINIMALE,
+    LONGUEUR_EMAIL,
+    LONGUEUR_NATIONALITE,
+    LONGUEUR_NOM,
+    MOT_DE_PASSE_MAX,
+    MOT_DE_PASSE_MIN,
+    RoleAstronaute,
 )
 
 
@@ -30,14 +40,30 @@ def convertir_erreurs(erreur: ValidationError) -> dict[str, str]:
 
 
 Nom = Annotated[
-    str, StringConstraints(min_length=1, max_length=100), AfterValidator(_non_vide)
+    str,
+    StringConstraints(min_length=1, max_length=LONGUEUR_NOM),
+    AfterValidator(_non_vide),
 ]
 Nationalite = Annotated[
-    str, StringConstraints(min_length=1, max_length=50), AfterValidator(_non_vide)
+    str,
+    StringConstraints(min_length=1, max_length=LONGUEUR_NATIONALITE),
+    AfterValidator(_non_vide),
 ]
-Role = Literal["commandant", "pilote", "specialiste"]
+Role = RoleAstronaute
 MissionId = Annotated[int, Field(gt=0)]
-Annee = Annotated[int, Field(gt=1900)]
+Annee = Annotated[int, Field(gt=ANNEE_MINIMALE)]
+Email = Annotated[EmailStr, StringConstraints(max_length=LONGUEUR_EMAIL)]
+
+# À l'inscription : la politique de mot de passe s'applique.
+MotDePasseNeuf = Annotated[
+    str, StringConstraints(min_length=MOT_DE_PASSE_MIN, max_length=MOT_DE_PASSE_MAX)
+]
+# À la connexion : seule la borne haute est reprise, pour ne pas hacher un corps
+# de requête démesuré. Y remettre `MOT_DE_PASSE_MIN` refuserait les comptes créés
+# sous une politique plus ancienne, et révélerait la politique à un attaquant.
+MotDePasseExistant = Annotated[
+    str, StringConstraints(min_length=1, max_length=MOT_DE_PASSE_MAX)
+]
 
 
 class AstronauteEntree(BaseModel):
@@ -70,15 +96,16 @@ class MissionPatch(BaseModel):
 
 class InscriptionEntree(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    email: EmailStr
-    mot_de_passe: Annotated[str, StringConstraints(min_length=12, max_length=128)]
+    email: Email
+    mot_de_passe: MotDePasseNeuf
 
 
 class UtilisateurPatch(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    email: EmailStr
+    email: Email
+
 
 class ConnexionEntree(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    email: EmailStr
-    mot_de_passe: Annotated[str, StringConstraints(min_length=1, max_length=128)]
+    email: Email
+    mot_de_passe: MotDePasseExistant

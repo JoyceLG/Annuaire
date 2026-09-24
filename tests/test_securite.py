@@ -5,9 +5,13 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 import logging
+import pytest
+from annuaire import creer_app
 
 from flask import Blueprint
 
+from annuaire import config
+from annuaire.config import ConfigProduction
 from annuaire.routes.commun import publique
 
 
@@ -186,6 +190,7 @@ def test_garde_fou_laisse_passer_une_vue_publique(app):
     assert app.test_client().get("/api/route-publique").status_code == 200
 
 
+# Vérifie que les secrets ne sont pas exposés dans les logs.
 def test_aucun_secret_dans_les_logs(client, caplog):
     with caplog.at_level(logging.DEBUG):
         client.post("/api/inscription", json={
@@ -203,17 +208,69 @@ def test_aucun_secret_dans_les_logs(client, caplog):
     assert "$argon2" not in tout
 
 
+# Vérifie que l'identifiant de corrélation est présent dans les réponses.
 def test_identifiant_de_correlation_present(client):
     reponse = client.get("/api/astronautes")
     assert "X-Request-ID" in reponse.headers
 
 
+# Vérifie que le mode debug est désactivé en production.
 def test_debug_desactive_en_production(app):
     # ConfigProd.DEBUG doit être False
     assert not app.config["DEBUG"]
 
 
+# Vérifie que la réponse 401 ne divulgue jamais l'email de l'utilisateur.
 def test_reponse_401_ne_cite_jamais_l_email(client):
     reponse = client.post("/api/connexion",
         json={"email": "cible@example.com", "mot_de_passe": "mauvais"})
     assert "cible@example.com" not in reponse.get_data(as_text=True)
+
+
+# Vérifie que l'application refuse de démarrer en production sans clé secrète.
+def test_production_refuse_de_demarrer_sans_cle(monkeypatch):
+    monkeypatch.delenv("CLE_SECRETE_JWT", raising=False)
+    with pytest.raises(RuntimeError, match="CLE_SECRETE_JWT"):
+        creer_app(ConfigProduction)
+
+
+# Vérifie que le mode debug est désactivé dans la configuration de production.
+def test_production_a_le_debug_desactive():
+    assert ConfigProduction.DEBUG is False
+
+
+# Vérifie qu'aucun secret n'est codé en dur dans le code.
+def test_aucun_secret_en_dur_dans_le_code():
+    import pathlib, re
+    motifs = [r"CLE_SECRETE.*=\s*['\"][^'\"]{8,}", r"secret\s*=\s*['\"][^'\"]{8,}"]
+    for fichier in pathlib.Path("annuaire").rglob("*.py"):
+        contenu = fichier.read_text()
+        for motif in motifs:
+            assert not re.search(motif, contenu, re.I), f"secret potentiel dans {fichier}"
+
+
+# Vérifie que le fichier .env n'est pas chargé en production.
+@pytest.mark.parametrize("environnement", ["production", " Production "])
+def test_dotenv_non_charge_en_production(monkeypatch, environnement):
+    appels = []
+    monkeypatch.setattr(config, "load_dotenv", lambda: appels.append(True))
+    monkeypatch.setenv("ENVIRONNEMENT", environnement)
+
+    config.charger_dotenv()
+
+    assert appels == []
+
+
+# Vérifie que le fichier .env est chargé hors production.
+@pytest.mark.parametrize("environnement", ["developpement", "test", None])
+def test_dotenv_charge_hors_production(monkeypatch, environnement):
+    appels = []
+    monkeypatch.setattr(config, "load_dotenv", lambda: appels.append(True))
+    if environnement is None:
+        monkeypatch.delenv("ENVIRONNEMENT", raising=False)
+    else:
+        monkeypatch.setenv("ENVIRONNEMENT", environnement)
+
+    config.charger_dotenv()
+
+    assert appels == [True]

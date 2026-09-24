@@ -10,7 +10,7 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from annuaire.config import Config
+from annuaire.config import choisir_config
 from annuaire.modeles import Base
 
 # this is the Alembic Config object, which provides
@@ -29,8 +29,10 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # L'URL vient d'`annuaire.config`, pas d'alembic.ini : application et migrations
-# ne peuvent plus travailler sur deux bases différentes.
-config.set_main_option("sqlalchemy.url", Config.URL_BASE)
+# ne peuvent plus travailler sur deux bases différentes. `resoudre` applique
+# aussi les variables d'environnement, donc `ENVIRONNEMENT=production alembic
+# upgrade head` migre bien la base de production.
+config.set_main_option("sqlalchemy.url", choisir_config().resoudre()["URL_BASE"])
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

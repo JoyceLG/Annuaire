@@ -16,6 +16,11 @@ PERMISSIONS: dict[str, set[str]] = {
 }
 
 
+# Rôle attribué à tout nouvel inscrit : le moins doté. Le promouvoir passe
+# obligatoirement par `flask promouvoir`, aucune route ne l'expose.
+ROLE_PAR_DEFAUT = RoleUtilisateur.LECTEUR
+
+
 def a_la_permission(role: str, permission: str) -> bool:
     """Le rôle donné accorde-t-il cette permission ?"""
 

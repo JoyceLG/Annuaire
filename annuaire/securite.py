@@ -26,10 +26,16 @@ from .erreurs import (
 from .modeles import Utilisateur
 from .permissions import a_la_permission
 
+
 # Mot de passe factice : son empreinte sert à consommer le même temps de calcul
 # quand l'adresse n'existe pas, pour ne pas la trahir par un délai plus court.
 _MOT_DE_PASSE_FACTICE = "mot-de-passe-qui-ne-sera-jamais-utilise"
 
+# Journalisée quand le serveur ne connaît pas l'adresse du client (client de
+# test, socket unix). Ce n'est pas une IP à bloquer, c'est une absence.
+IP_INCONNUE = "0.0.0.0"
+
+PREFIXE_AUTORISATION = "Bearer "
 
 # ======================= HACHAGE DES MOTS DE PASSE ========================
 
@@ -49,12 +55,20 @@ def hacher(mot_de_passe: str) -> str:
 
 
 def recuperer_ip() -> str:
-    """Renvoie l'adresse IP du client."""
-    
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
-    if ip is None:
-        ip = "0.0.0.0"
-    return ip
+    """Renvoie l'adresse IP du client.
+
+    `X-Forwarded-For` n'est lu que si `FAIRE_CONFIANCE_PROXY` est actif : cet
+    en-tête est fourni par le client, et sans reverse proxy pour le réécrire,
+    n'importe qui choisirait l'adresse qu'on inscrit au journal.
+    """
+
+    if current_app.config["FAIRE_CONFIANCE_PROXY"]:
+        transmise = request.headers.get("X-Forwarded-For", "")
+        # La chaîne liste tous les relais traversés : le client est le premier.
+        premiere = transmise.split(",")[0].strip()
+        if premiere:
+            return premiere
+    return request.remote_addr or IP_INCONNUE
 
 
 def verifier_identifiants(bdd: Session, email: str, mot_de_passe: str) -> Utilisateur:
@@ -92,14 +106,16 @@ def creer_jeton(id_utilisateur: int) -> str:
             "exp": maintenant + current_app.config["DUREE_JETON"],
         },
         current_app.config["CLE_SECRETE_JWT"],
-        algorithm="HS256",
+        algorithm=current_app.config["ALGORITHME_JWT"],
     )
 
 
 def lire_jeton(jeton: str) -> int:
     try:
         charge = jwt.decode(
-            jeton, current_app.config["CLE_SECRETE_JWT"], algorithms=["HS256"]
+            jeton,
+            current_app.config["CLE_SECRETE_JWT"],
+            algorithms=[current_app.config["ALGORITHME_JWT"]],
         )
     except jwt.ExpiredSignatureError:
         raise JetonExpire(tronquer_jeton(jeton))
@@ -110,14 +126,15 @@ def lire_jeton(jeton: str) -> int:
 
 def jeton_de_la_requete() -> str:
     entete = request.headers.get("Authorization", "")
-    if not entete.startswith("Bearer "):
+    if not entete.startswith(PREFIXE_AUTORISATION):
         raise JetonManquant()
-    return entete.removeprefix("Bearer ")
+    return entete.removeprefix(PREFIXE_AUTORISATION)
 
 
 def tronquer_jeton(jeton: str) -> str:
-    """Renvoie les 8 premiers caractères du jeton, pour affichage/log."""
-    return jeton[:8]
+    """Renvoie le début du jeton, assez pour le corréler, trop peu pour le rejouer."""
+
+    return jeton[: current_app.config["LONGUEUR_JETON_JOURNAL"]]
 
 
 # ============================== DÉCORATEURS ===============================

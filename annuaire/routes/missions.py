@@ -8,9 +8,9 @@ from ..donnees import astronautes as donnees_astronautes
 from ..donnees import missions as donnees_missions
 from ..erreurs import MissionUtilisee
 from ..securite import permission_requise
-from .commun import lire_corps, publique
+from .commun import PREFIXE_API, lire_corps, publique
 
-bp = Blueprint("missions", __name__, url_prefix="/api")
+bp = Blueprint("missions", __name__, url_prefix=PREFIXE_API)
 
 
 @bp.get("/missions/<int(min=1):id_mission>")

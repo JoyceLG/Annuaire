@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from flask import Flask, current_app, g
 from sqlalchemy import Engine, create_engine
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -19,15 +20,43 @@ class Connexion:
     FabriqueSession: sessionmaker
 
 
-def initialiser(app: Flask) -> None:
-    url = app.config["URL_BASE"]
-    options = {}
-    if url == "sqlite://":
-        # Base en mémoire : sans pool statique, chaque session ouvrirait une
-        # connexion neuve, donc une base vide. Utile aux tests uniquement.
-        options = {"poolclass": StaticPool, "connect_args": {"check_same_thread": False}}
+def est_en_memoire(url: URL) -> bool:
+    """La base vit-elle uniquement en RAM ?
 
-    moteur = create_engine(url, echo=app.config["ECHO_SQL"], **options)
+    Comparer la chaîne à "sqlite://" raterait les autres écritures de la même
+    base : "sqlite:///:memory:" et "sqlite://:memory:".
+    """
+
+    return url.get_backend_name() == "sqlite" and url.database in (None, "", ":memory:")
+
+
+def options_moteur(app: Flask, url: URL) -> dict:
+    """Les options de connexion adaptées à la base visée."""
+
+    if est_en_memoire(url):
+        # Sans pool statique, chaque session ouvrirait une connexion neuve,
+        # donc une base vide. Utile aux tests uniquement.
+        return {"poolclass": StaticPool, "connect_args": {"check_same_thread": False}}
+
+    if url.get_backend_name() == "sqlite":
+        # SQLite sur fichier ignore le dimensionnement d'un pool réseau.
+        return {}
+
+    return {
+        "pool_size": app.config["POOL_TAILLE"],
+        "max_overflow": app.config["POOL_DEBORDEMENT"],
+        "pool_recycle": app.config["POOL_RECYCLAGE"],
+        "pool_timeout": app.config["POOL_TIMEOUT"],
+        # Écarte les connexions coupées par le serveur pendant une inactivité.
+        "pool_pre_ping": True,
+    }
+
+
+def initialiser(app: Flask) -> None:
+    url = make_url(app.config["URL_BASE"])
+    moteur = create_engine(
+        url, echo=app.config["ECHO_SQL"], **options_moteur(app, url)
+    )
     app.extensions["bdd"] = Connexion(moteur, sessionmaker(bind=moteur))
     app.teardown_appcontext(fermer_session)
 

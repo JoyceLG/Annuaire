@@ -9,6 +9,13 @@ from pydantic import BaseModel, ValidationError
 from .. import schemas
 from ..erreurs import DonneesInvalides, PermissionRefusee
 
+# Préfixe commun aux blueprints. Lu à l'import du module, donc hors de portée de
+# `app.config` : c'est le contrat d'URL de l'API, pas un réglage de déploiement.
+PREFIXE_API = "/api"
+
+# En-tête de corrélation, lu en entrée et réémis en sortie.
+EN_TETE_REQUETE_ID = "X-Request-ID"
+
 
 def publique(fonction):
     """Marque une vue comme accessible sans jeton.
@@ -40,14 +47,15 @@ def refuser_par_defaut():
 def demarrer_requete():
     """Initialise les informations de suivi pour la requête en cours."""
     
-    g.requete_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
+    recu = request.headers.get(EN_TETE_REQUETE_ID)
+    g.requete_id = recu or uuid.uuid4().hex[: current_app.config["LONGUEUR_REQUETE_ID"]]
     g.debut = time.perf_counter()
 
 
 def terminer_requete(reponse):
     """Ajoute l'ID de requête aux en-têtes de la réponse HTTP."""
     
-    reponse.headers["X-Request-ID"] = g.get("requete_id", "-")
+    reponse.headers[EN_TETE_REQUETE_ID] = g.get("requete_id", "-")
     return reponse
 
 def lire_corps(modele: type[BaseModel], partiel: bool = False) -> dict:

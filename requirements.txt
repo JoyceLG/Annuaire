@@ -5,3 +5,4 @@ pydantic[email]>=2
 pyjwt
 argon2-cffi
 pytest
+python-dotenv

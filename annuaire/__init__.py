@@ -12,27 +12,32 @@ from flask import Flask
 
 from . import bdd
 from .cli import enregistrer_commandes
-from .config import Config
+from .config import Config, choisir_config
 from .gestionnaires import enregistrer_gestionnaires
+from .journal import configurer_journal
 from .routes import enregistrer_blueprints
 from .securite import initialiser_hachage
-from .journal import configurer_journal
 
 __all__ = ["creer_app"]
 
-def creer_app(config: type[Config] = Config, **surcharges) -> Flask:
-    """Construit une application. Les surcharges priment sur la configuration."""
+
+def creer_app(config: type[Config] | str | None = None, **surcharges) -> Flask:
+    """Construit une application. Les surcharges priment sur la configuration.
+
+    `config` accepte une classe (`creer_app(ConfigTest)`, ce que font les tests),
+    un nom d'environnement (`creer_app("production")`), ou rien : la variable
+    d'environnement `ENVIRONNEMENT` tranche alors, et à défaut le développement.
+    """
+
+    if config is None or isinstance(config, str):
+        config = choisir_config(config)
 
     app = Flask(__name__)
-    app.config.from_object(config)
-    app.config.update(surcharges)
-
-    if not app.config["CLE_SECRETE_JWT"]:
-        raise RuntimeError(
-            "CLE_SECRETE_JWT est vide. Définissez-la avant de lancer l'application :\n"
-            '  export CLE_SECRETE_JWT=$(python -c "import secrets;'
-            ' print(secrets.token_urlsafe(32))")'
-        )
+    # `resoudre` empile les trois sources dans l'ordre : attributs de classe,
+    # variables d'environnement, puis surcharges. La validation porte donc sur
+    # ce que l'application utilisera vraiment, et non sur la seule classe.
+    app.config.update(config.resoudre(**surcharges))
+    config.valider(app.config)
 
     bdd.initialiser(app)
     initialiser_hachage(app)
@@ -41,4 +46,3 @@ def creer_app(config: type[Config] = Config, **surcharges) -> Flask:
     enregistrer_commandes(app)
     configurer_journal(app)
     return app
-

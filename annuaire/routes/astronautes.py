@@ -7,15 +7,10 @@ from ..bdd import session_bdd
 from ..donnees import astronautes as donnees_astronautes
 from ..donnees import missions as donnees_missions
 from ..securite import permission_requise
-from .commun import lire_corps, publique
+from .commun import PREFIXE_API, lire_corps, publique
 
-bp = Blueprint("astronautes", __name__, url_prefix="/api")
+bp = Blueprint("astronautes", __name__, url_prefix=PREFIXE_API)
 
-
-@bp.get("/plante")
-@publique
-def plante():
-    return 1 / 0
 
 @bp.get("/astronautes/<int(min=1):id_astronaute>")
 @publique

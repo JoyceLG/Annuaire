@@ -13,9 +13,9 @@ from ..erreurs import PermissionRefusee
 from ..modeles import Utilisateur
 from ..permissions import a_la_permission
 from ..securite import authentification_requise
-from .commun import lire_corps, publique
+from .commun import PREFIXE_API, lire_corps, publique
 
-bp = Blueprint("utilisateurs", __name__, url_prefix="/api")
+bp = Blueprint("utilisateurs", __name__, url_prefix=PREFIXE_API)
 logger = logging.getLogger(__name__)
 
 

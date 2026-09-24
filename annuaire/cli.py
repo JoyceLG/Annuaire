@@ -6,8 +6,9 @@ from flask.cli import with_appcontext
 from sqlalchemy import func, select
 
 from .bdd import session_bdd
+from .donnees import demonstration
 from .donnees import utilisateurs as donnees_utilisateurs
-from .modeles import Astronaute, Mission
+from .modeles import Mission
 from .permissions import RoleUtilisateur
 
 
@@ -45,28 +46,9 @@ def peupler():
     if bdd.scalar(select(func.count()).select_from(Mission)):
         raise click.ClickException("La base contient déjà des missions.")
 
-    apollo_11 = Mission(nom="Apollo 11", programme="Apollo", annee=1969)
-    apollo_12 = Mission(nom="Apollo 12", programme="Apollo", annee=1969)
-    apollo_14 = Mission(nom="Apollo 14", programme="Apollo", annee=1971)
-
-    # Les astronautes sont rattachés par la relation : SQLAlchemy ordonne les
-    # INSERT et renseigne mission_id, sans qu'on ait à deviner les identifiants.
-    bdd.add_all(
-        [
-            apollo_11,
-            apollo_12,
-            apollo_14,
-            Astronaute(nom="Neil Armstrong", role="commandant",
-                       nationalite="Etats-Unis", mission=apollo_11),
-            Astronaute(nom="Alan Bean", role="pilote",
-                       nationalite="Etats-Unis", mission=apollo_12),
-            Astronaute(nom="Peter Conrad", role="commandant",
-                       nationalite="Etats-Unis", mission=apollo_12),
-            Astronaute(nom="Edgar Mitchell", role="pilote",
-                       nationalite="Etats-Unis", mission=apollo_14),
-            Astronaute(nom="Alan Shepard", role="commandant",
-                       nationalite="Etats-Unis", mission=apollo_14),
-        ]
-    )
+    bdd.add_all(demonstration.construire())
     bdd.commit()
-    click.echo("Base peuplée : 3 missions, 5 astronautes.")
+    click.echo(
+        f"Base peuplée : {len(demonstration.MISSIONS)} missions, "
+        f"{len(demonstration.ASTRONAUTES)} astronautes."
+    )

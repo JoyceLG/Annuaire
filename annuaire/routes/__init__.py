@@ -2,8 +2,8 @@
 
 from flask import Flask
 
-from . import astronautes, missions, utilisateurs
-from .commun import refuser_par_defaut, demarrer_requete, terminer_requete
+from . import astronautes, debogage, missions, utilisateurs
+from .commun import demarrer_requete, refuser_par_defaut, terminer_requete
 
 BLUEPRINTS = (astronautes.bp, missions.bp, utilisateurs.bp)
 
@@ -11,6 +11,11 @@ BLUEPRINTS = (astronautes.bp, missions.bp, utilisateurs.bp)
 def enregistrer_blueprints(app: Flask) -> None:
     for bp in BLUEPRINTS:
         app.register_blueprint(bp)
+
+    # Les routes de débogage ne sont même pas déclarées hors développement :
+    # une route absente ne peut pas être appelée par erreur.
+    if app.config.get("DEBUG"):
+        app.register_blueprint(debogage.bp)
 
     # Posé sur l'application et non sur un blueprint : une vue ajoutée hors
     # blueprint doit elle aussi se déclarer publique ou protégée.
