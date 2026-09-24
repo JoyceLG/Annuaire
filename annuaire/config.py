@@ -16,7 +16,6 @@ import os
 import secrets
 
 from datetime import timedelta
-from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from dotenv import load_dotenv
@@ -38,11 +37,6 @@ def charger_dotenv() -> None:
 
 
 charger_dotenv()
-
-# Racine du projet : le dossier qui contient le paquet `annuaire`. Sert à
-# ancrer la base SQLite par défaut, pour qu'elle ne dépende pas du répertoire
-# depuis lequel on lance `flask` ou `pytest`.
-RACINE = Path(__file__).resolve().parent.parent
 
 
 # ========================= LECTURE DE L'ENVIRONNEMENT =========================
@@ -88,12 +82,13 @@ class Config:
     """Réglages communs. Les classes filles ne font que les ajuster."""
 
     # --- Base de données -----------------------------------------------------
-    # Chemin absolu : `flask run` depuis un sous-dossier viserait sinon une
-    # autre base que `alembic upgrade head` lancé depuis la racine.
-    URL_BASE = f"sqlite:///{RACINE / 'astronautes.db'}"
+    # Aucune base par défaut : le code ne connaît aucune technologie de base,
+    # elle vient tout entière de l'URL (`URL_BASE_DE_DONNEES`). Changer de base
+    # revient à changer cette URL et à installer le pilote correspondant.
+    URL_BASE = None
     ECHO_SQL = False
 
-    # Pool de connexions : ignoré par SQLite, utile dès qu'on passe à Postgres.
+    # Pool de connexions : ignoré par les bases sans serveur (SQLite).
     POOL_TAILLE = 5
     POOL_DEBORDEMENT = 10
     POOL_RECYCLAGE = 1800
@@ -187,9 +182,12 @@ class ConfigDeveloppement(Config):
 
 
 class ConfigTest(Config):
-    """Tests : base jetable, clé éphémère, hachage au rabais."""
+    """Tests : clé éphémère, hachage au rabais.
 
-    URL_BASE = "sqlite://"
+    La base est fournie par `tests/conftest.py` (variable `URL_BASE_TESTS`),
+    en surcharge de `creer_app` : cette classe ne lit pas l'environnement.
+    """
+
     # Tirée au hasard, et jamais celle du développeur : les tests passent sur une
     # machine sans `.env`, et un jeton fabriqué ici ne vaut rien ailleurs.
     CLE_SECRETE_JWT = secrets.token_urlsafe(32)

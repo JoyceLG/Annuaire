@@ -506,3 +506,9 @@ Authorization: Bearer {{jeton_admin}}
 
 ### Erreur → 500
 GET {{base}}/plante
+
+
+### ====================== SANTE =========================
+
+### OK
+GET {{base}}/sante

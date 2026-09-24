@@ -29,7 +29,7 @@ def trouver_par_nom(bdd: Session, nom: str) -> Mission:
 
 
 def lister(bdd: Session, programme: str | None = None) -> list[Mission]:
-    requete = select(Mission)
+    requete = select(Mission).order_by(Mission.id)
     if programme:
         requete = requete.where(Mission.programme.ilike(f"%{programme}%"))
     return list(bdd.scalars(requete).all())

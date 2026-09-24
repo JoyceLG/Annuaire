@@ -6,6 +6,7 @@ from werkzeug.exceptions import HTTPException
 
 from .erreurs import (
     AstronauteIntrouvable,
+    BaseIndisponible,
     DonneesInvalides,
     EmailDejaUtilise,
     IdentifiantsInvalides,
@@ -101,6 +102,13 @@ def enregistrer_gestionnaires(app):
             erreur.chemin,
         )
         return {"erreur": "Permission refusée"}, 403
+
+    @app.errorhandler(BaseIndisponible)
+    def gerer_base_indisponible(erreur):
+        # 503 et non 500 : le service est momentanément injoignable, ce n'est
+        # pas un bug. La cause va au journal, jamais au client.
+        logger.error("Base de données indisponible : %s", erreur.cause)
+        return {"erreur": str(erreur)}, 503
 
     @app.errorhandler(Exception)
     def gerer_erreur_inattendue(erreur):

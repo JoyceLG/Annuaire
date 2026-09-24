@@ -1,0 +1,61 @@
+services:
+  base:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: annuaire
+      POSTGRES_PASSWORD: ${MOT_DE_PASSE_BASE}
+      POSTGRES_DB: annuaire
+    # Publié sur la seule machine locale : l'API et pytest lancés depuis .venv
+    # l'atteignent, le reste du réseau non.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - donnees_postgres:/var/lib/postgresql/data
+      # Scripts lancés une seule fois, à la création du volume : ils créent
+      # annuaire_tests, y compris après un `down -v`.
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U annuaire"]
+      interval: 5s
+      retries: 5
+
+  api:
+    build: .
+    # Comme la base : publiée sur la seule machine locale. Pour l'ouvrir à un
+    # autre poste, remplacer 127.0.0.1 par l'adresse de l'interface voulue.
+    ports:
+      - "127.0.0.1:5000:5000"
+    environment:
+      ENVIRONNEMENT: production
+      CLE_SECRETE_JWT: ${CLE_SECRETE_JWT}
+      URL_BASE_DE_DONNEES: postgresql+psycopg://annuaire:${MOT_DE_PASSE_BASE}@base:5432/annuaire
+    depends_on:
+      base:
+        condition: service_healthy
+    # Python est dans l'image de l'API, pas dans celle de Postgres. /api/sante
+    # répond 503 quand la base est injoignable : urlopen lève alors une erreur,
+    # la commande échoue, et le conteneur passe « unhealthy ».
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/sante')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # La suite de tests dans l'environnement réel : même image que l'API (même
+  # Python, mêmes dépendances), sur le Postgres de base. Le profil l'écarte de
+  # `docker compose up` ; on la lance avec `docker compose run --rm tests`.
+  tests:
+    build: .
+    profiles: ["tests"]
+    environment:
+      URL_BASE_TESTS: postgresql+psycopg://annuaire:${MOT_DE_PASSE_BASE}@base:5432/annuaire_tests
+    # Sans cache : /app appartient à root, l'utilisateur de l'image n'y écrit
+    # pas, et c'est voulu.
+    command: ["pytest", "-q", "-p", "no:cacheprovider"]
+    depends_on:
+      base:
+        condition: service_healthy
+
+volumes:
+  donnees_postgres:

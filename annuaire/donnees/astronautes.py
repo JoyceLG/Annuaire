@@ -22,6 +22,7 @@ def lister(bdd: Session, role=None, mission_id=None) -> list[Astronaute]:
         select(Astronaute)
         .join(Astronaute.mission)
         .options(selectinload(Astronaute.mission))
+        .order_by(Astronaute.id)
     )
     if role:
         requete = requete.where(Astronaute.role.ilike(f"%{role}%"))

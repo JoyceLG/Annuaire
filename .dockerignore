@@ -1,0 +1,15 @@
+.venv/
+# `**/` : les caches de tous les dossiers (tests/__pycache__…), pas seulement
+# ceux de la racine. Copiés, ils porteraient les chemins du poste.
+**/__pycache__/
+**/*.pyc
+.git/
+.gitignore
+.env
+*.db
+**/.pytest_cache/
+*.md
+.claude
+annuaire.http
+# Scripts d'initialisation de Postgres, montés dans le conteneur base.
+docker/

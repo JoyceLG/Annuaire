@@ -76,3 +76,9 @@ class PermissionRefusee(ErreurApi):
         self.utilisateur = utilisateur
         self.chemin = chemin
         super().__init__(f"Permission refusée")
+
+
+class BaseIndisponible(ErreurApi):
+    def __init__(self, cause: str):
+        self.cause = cause
+        super().__init__("Base de données indisponible")

@@ -6,3 +6,4 @@ pyjwt
 argon2-cffi
 pytest
 python-dotenv
+psycopg[binary]

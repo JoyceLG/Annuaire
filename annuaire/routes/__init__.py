@@ -2,10 +2,10 @@
 
 from flask import Flask
 
-from . import astronautes, debogage, missions, utilisateurs
+from . import astronautes, debogage, missions, utilisateurs, sante
 from .commun import demarrer_requete, refuser_par_defaut, terminer_requete
 
-BLUEPRINTS = (astronautes.bp, missions.bp, utilisateurs.bp)
+BLUEPRINTS = (astronautes.bp, missions.bp, utilisateurs.bp, sante.bp)
 
 
 def enregistrer_blueprints(app: Flask) -> None:

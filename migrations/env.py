@@ -32,7 +32,10 @@ target_metadata = Base.metadata
 # ne peuvent plus travailler sur deux bases différentes. `resoudre` applique
 # aussi les variables d'environnement, donc `ENVIRONNEMENT=production alembic
 # upgrade head` migre bien la base de production.
-config.set_main_option("sqlalchemy.url", choisir_config().resoudre()["URL_BASE"])
+url_base = choisir_config().resoudre()["URL_BASE"]
+if not url_base:
+    raise RuntimeError("Réglage manquant : URL_BASE_DE_DONNEES")
+config.set_main_option("sqlalchemy.url", url_base)
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
