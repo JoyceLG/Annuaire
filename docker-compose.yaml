@@ -1,5 +1,15 @@
+# Sans limite, Docker garde toute la sortie d'un conteneur, jusqu'à remplir le
+# disque. Il la fait tourner lui-même : un seul acteur, là où chaque worker
+# Gunicorn ferait tourner son propre fichier (FICHIER_LOG) sans les autres.
+x-journal: &journal
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   base:
+    logging: *journal
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: annuaire
@@ -21,6 +31,7 @@ services:
 
   api:
     build: .
+    logging: *journal
     # Comme la base : publiée sur la seule machine locale. Pour l'ouvrir à un
     # autre poste, remplacer 127.0.0.1 par l'adresse de l'interface voulue.
     ports:
@@ -29,6 +40,10 @@ services:
       ENVIRONNEMENT: production
       CLE_SECRETE_JWT: ${CLE_SECRETE_JWT}
       URL_BASE_DE_DONNEES: postgresql+psycopg://annuaire:${MOT_DE_PASSE_BASE}@base:5432/annuaire
+      # Sans valeur, gunicorn.conf.py compterait les cœurs de l'hôte : sur une
+      # grosse machine, workers × pool dépasserait le max_connections de
+      # Postgres (100). 4 × 15 = 60 laisse la marge des tests et d'alembic.
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-4}
     depends_on:
       base:
         condition: service_healthy

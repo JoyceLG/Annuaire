@@ -1,7 +1,8 @@
 FROM python:3.12-slim
 
 # FLASK_APP dans l'image : toute commande `flask` lancée dans le conteneur
-# (run, promouvoir, peupler) trouve l'application, .env n'étant pas copié.
+# (promouvoir, peupler) trouve l'application, .env n'étant pas copié. Le
+# serveur, lui, est Gunicorn, qui reçoit l'application dans son CMD.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     FLASK_APP=annuaire:creer_app
@@ -17,4 +18,4 @@ USER appuser
 COPY . .
 
 EXPOSE 5000
-CMD ["flask", "run", "--host", "0.0.0.0"]
+CMD ["gunicorn", "--config", "gunicorn.conf.py", "annuaire:creer_app()"]

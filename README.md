@@ -1,49 +1,41 @@
-# Annuaire des astronautes — Session 20 : docker
+# Annuaire des astronautes — Session 21 : serveur de production
 
 API REST sur Postgres ou SQLite, au choix, avec authentification JWT, rôles,
-migrations Alembic et tests pytest. L'application et sa base tournent
-désormais dans deux conteneurs Docker.
+migrations Alembic et tests pytest, dans deux conteneurs Docker. L'API y est
+désormais servie par Gunicorn, et non plus par le serveur de développement.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- **Une image Docker de l'API** (`Dockerfile`) et **Postgres dans un conteneur
-  séparé** (`docker-compose.yaml`). Le conteneur `api` reçoit sa configuration
-  par variables d'environnement (`ENVIRONNEMENT=production`, clé JWT, URL de la
-  base) ; `.dockerignore` écarte `.env`, et `FLASK_APP` est fixé dans l'image
-  pour que toute commande `flask` du conteneur trouve l'application.
-- **Postgres remplace SQLite, sans lier le code à une base.** Aucune base n'est
-  écrite dans le code : elle vient tout entière de `URL_BASE_DE_DONNEES`.
-  Changer de base, c'est changer l'URL et installer le pilote (`psycopg` pour
-  Postgres). Sans URL, l'application et Alembic refusent de démarrer.
-- **Une migration initiale unique**, générée depuis les modèles. Les anciennes
-  révisions contenaient du SQL propre à SQLite (`instr`) qui échouait sous
-  Postgres ; plus aucun SQL n'est écrit à la main.
-- **Les tests tournent sur la base réellement utilisée** (`URL_BASE_TESTS`),
-  Postgres comme SQLite. Un garde-fou refuse toute base dont le nom ne se
-  termine pas par `_tests`, les tables sont recréées à chaque test, et chaque
-  requête reçoit sa propre session, comme en production.
-- **Les listes sont triées** (`order_by`) : sans cela, aucune base ne garantit
-  d'ordre, et Postgres peut en changer d'une requête à l'autre.
-- **Une route de santé**, `/api/sante` : 200 si la base répond, 503 sinon
-  (`BaseIndisponible`), la cause allant au journal et jamais au client.
-- **Chaque service a son test de santé** : `pg_isready` pour `base`, un appel
-  à `/api/sante` pour `api`. L'API ne démarre qu'une base saine, et passe
-  « unhealthy » si la base tombe.
-- **Tout n'est publié que sur `127.0.0.1`** (Postgres sur 5432, l'API sur
-  5000) : ouvrir un port à un autre poste devient un choix explicite.
-- **La suite de tests dans l'environnement réel** : un service `tests` (profil
-  `tests`) lance pytest dans l'image de l'API, sur Postgres ; la base
-  `annuaire_tests` est créée à la création du volume
-  (`docker/initdb/creer_base_tests.sh`).
-- **Toutes les commandes Docker, cas par cas**, dans ce README.
-- **`DEPLOIEMENT.md` réécrit pour Docker** : variables lues par Compose et par
-  l'application, séquence complète (premier déploiement, mise à jour,
-  sauvegarde), et différence entre `down` et `down -v`.
-- **`CLAUDE.md`** et le skill `validate-projet-annuaire` : règles du projet et
-  déroulé de validation d'une session.
+- **Gunicorn remplace `flask run` dans l'image.** Le `CMD` du `Dockerfile`
+  lance `gunicorn --config gunicorn.conf.py "annuaire:creer_app()"` : un
+  processus maître et plusieurs workers, chacun avec sa propre application,
+  son propre moteur et son propre pool de connexions.
+- **`gunicorn.conf.py`** : écoute sur `0.0.0.0:5000` dans le conteneur
+  (l'exposition reste limitée à `127.0.0.1` par Compose), workers `sync`,
+  délai de 30 s avant de tuer un worker bloqué, arrêt en douceur, recyclage
+  d'un worker toutes les 1000 requêtes environ, journal d'accès de Gunicorn
+  coupé (celui de l'application est plus riche), erreurs sur la sortie
+  standard.
+- **Un nombre de workers fixé, `GUNICORN_WORKERS=4`**, transmis par
+  `docker-compose.yaml`. Le défaut de Gunicorn (`2 × cœurs + 1`) compte les
+  cœurs de l'hôte : 33 workers sur 16 cœurs, soit jusqu'à 495 connexions pour
+  les 100 qu'accepte Postgres. 4 workers × 15 connexions laissent la marge des
+  tests et d'Alembic.
+- **Rotation des journaux par Docker** (`x-journal` : 5 fichiers de 10 Mo par
+  conteneur, pour `api` et `base`). Sans limite, Docker garde toute la sortie
+  jusqu'à remplir le disque ; et un `FICHIER_LOG` tournant n'est pas sûr sous
+  Gunicorn, chaque worker faisant tourner le même fichier de son côté.
+- **Dépendances épinglées** dans `requirements.txt`, sur les versions
+  vérifiées dans l'image : une reconstruction ne change plus de version sans
+  qu'on l'ait décidé.
+- **`DEPLOIEMENT.md` complété** : dimensionnement des workers (connexions,
+  mémoire argon2, délai), même clé JWT dans tous les workers, arrêt en douceur
+  (`docker compose stop -t 30`), une section « Surveiller » et la liste de
+  vérification mise à jour.
+- **`annuaire.http`** : la requête de santé passe en tête du fichier.
 
 ## Lancer
 
@@ -114,10 +106,11 @@ Trois services dans `docker-compose.yaml` :
 | Service | Rôle | Lancé par |
 |---|---|---|
 | `base` | Postgres 16, publié sur `127.0.0.1:5432` ; données dans le volume `annuaire_donnees_postgres` | `docker compose up` |
-| `api` | l'application, en production, publiée sur `127.0.0.1:5000` | `docker compose up` |
+| `api` | l'application, en production, servie par Gunicorn (4 workers), publiée sur `127.0.0.1:5000` | `docker compose up` |
 | `tests` | la suite pytest, dans la même image que l'API | `docker compose run --rm tests` seulement (profil `tests`) |
 
-Compose lit `CLE_SECRETE_JWT` et `MOT_DE_PASSE_BASE` dans le `.env` du projet.
+Compose lit `CLE_SECRETE_JWT`, `MOT_DE_PASSE_BASE` et, s'il est renseigné,
+`GUNICORN_WORKERS` dans le `.env` du projet.
 En production, un fichier à part : voir `DEPLOIEMENT.md` §1.1.
 
 Deux façons de lancer une commande dans un conteneur :
@@ -212,14 +205,18 @@ docker compose run --rm api flask routes         # routes enregistrées
 
 ```bash
 docker compose ps                           # état et santé des services
-docker compose logs api                     # journal JSON de l'API
+docker compose logs api                     # démarrage de Gunicorn (texte), puis journal JSON de l'API
 docker compose logs -f api                  # le même, en continu (Ctrl+C pour sortir)
+docker compose logs api | grep -c "Booting worker"   # 4 au démarrage ; plus, s'il a fallu en remplacer
+docker compose logs api | grep "WORKER TIMEOUT"      # workers tués après 30 s sans réponse
 curl http://127.0.0.1:5000/api/sante        # 200 si la base répond, 503 sinon
 docker compose exec base psql -U annuaire annuaire   # console Postgres (\dt, \q)
 ```
 
 `api` passe « unhealthy » une trentaine de secondes après une panne de la base,
-et redevient « healthy » quand elle revient, sans redémarrage.
+et redevient « healthy » quand elle revient, sans redémarrage. Docker ne garde
+que 5 fichiers de 10 Mo de journal par conteneur : `logs` ne remonte pas
+indéfiniment.
 
 ### Sauvegarder et restaurer la base
 
@@ -232,7 +229,7 @@ docker compose exec -T base psql -U annuaire annuaire < sauvegarde-AAAA-MM-JJ.sq
 
 | Commande | Effet | Données |
 |---|---|---|
-| `docker compose stop` | arrête les conteneurs, sans les supprimer | conservées |
+| `docker compose stop` | arrête les conteneurs, sans les supprimer (`-t 30` laisse aux requêtes en cours le temps de Gunicorn) | conservées |
 | `docker compose start` | relance les conteneurs arrêtés | conservées |
 | `docker compose restart api` | redémarre la seule API | conservées |
 | `docker compose down` | arrête et **supprime** conteneurs et réseau | **conservées** (volume intact) |
@@ -280,8 +277,9 @@ annuaire/              le paquet applicatif
 └── routes/            un blueprint par ressource, plus sante.py (debogage.py seulement si DEBUG)
 tests/                 conftest.py + un fichier par domaine
 migrations/            révisions Alembic (une migration initiale unique)
-Dockerfile             image de l'API
-docker-compose.yaml    services base (Postgres), api, et tests (profil tests)
+Dockerfile             image de l'API, lancée par Gunicorn
+gunicorn.conf.py       workers, délais, recyclage et journal de Gunicorn
+docker-compose.yaml    services base (Postgres), api, et tests (profil tests) ; rotation des journaux
 docker/initdb/         scripts lancés par Postgres à la création du volume (annuaire_tests)
 .dockerignore          ce qui n'entre pas dans l'image, dont .env
 DEPLOIEMENT.md         mise en production avec Docker, liste de vérification
@@ -331,6 +329,11 @@ flask promouvoir camille@example.com admin
   application neuve sur la base de `URL_BASE_TESTS`, aux tables recréées, sans
   `monkeypatch`. Aucune fixture n'ouvre de contexte applicatif : chaque requête
   du test a sa propre session, comme en production.
+- **Un worker, une application.** Gunicorn appelle `creer_app()` dans chaque
+  worker : tout ce qui est tiré au hasard au démarrage différerait d'un
+  worker à l'autre. C'est pourquoi la clé JWT vient toujours de
+  l'environnement en production, et pourquoi le pool se dimensionne par
+  worker.
 - **Les listes sont triées par identifiant** (`order_by`) : sans cela, aucune
   base ne garantit d'ordre.
 - Repartir de zéro : `alembic downgrade base && alembic upgrade head && flask peupler`.

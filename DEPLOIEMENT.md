@@ -1,10 +1,10 @@
 # Déploiement
 
 Mise en production de l'annuaire avec Docker Compose : un conteneur `base`
-(Postgres 16) et un conteneur `api` (l'application), décrits par
-`docker-compose.yaml` et `Dockerfile`.
+(Postgres 16) et un conteneur `api` (l'application, servie par Gunicorn),
+décrits par `docker-compose.yaml`, `Dockerfile` et `gunicorn.conf.py`.
 
-À dérouler dans l'ordre. La liste de vérification (§7) se coche avant de
+À dérouler dans l'ordre. La liste de vérification (§8) se coche avant de
 considérer la mise en production comme terminée.
 
 ---
@@ -23,6 +23,7 @@ conteneurs : Compose les recopie aux endroits où `docker-compose.yaml` les cite
 |---|---|---|
 | `CLE_SECRETE_JWT` | Signe et vérifie les jetons de connexion. | `api` (variable du même nom) |
 | `MOT_DE_PASSE_BASE` | Mot de passe du compte Postgres `annuaire`. | `base` (`POSTGRES_PASSWORD`) et `api` (dans `URL_BASE_DE_DONNEES`) |
+| `GUNICORN_WORKERS` | Facultative : `4` si absente. Voir §1.4. | `api` (variable du même nom) |
 
 **Attention au fichier lu.** Sans option, Compose lit le `.env` du dossier du
 projet, celui du **développement**. La production doit avoir son propre
@@ -44,7 +45,7 @@ une valeur vide. Ce message ne doit jamais apparaître en production.
 | `ENVIRONNEMENT` | `production` | `docker-compose.yaml` |
 | `CLE_SECRETE_JWT` | celle du fichier de production | `docker-compose.yaml`, depuis §1.1 |
 | `URL_BASE_DE_DONNEES` | `postgresql+psycopg://annuaire:<MOT_DE_PASSE_BASE>@base:5432/annuaire` | `docker-compose.yaml`, depuis §1.1 |
-| `FLASK_APP` | `annuaire:creer_app` | `Dockerfile` : toute commande `flask` du conteneur (`run`, `promouvoir`) trouve l'application |
+| `FLASK_APP` | `annuaire:creer_app` | `Dockerfile` : toute commande `flask` du conteneur (`promouvoir`, `peupler`) trouve l'application. Le serveur, lui, n'en a pas besoin : Gunicorn reçoit l'application directement (`annuaire:creer_app()`). |
 
 - `ENVIRONNEMENT=production` : `DEBUG` coupé, route `/api/plante` absente,
   journal JSON au niveau `WARNING`. Sans cette variable, l'application
@@ -70,9 +71,49 @@ n'atteint pas le conteneur. La liste complète est dans `annuaire/config.py`
 | `NIVEAU_LOG` | `WARNING` | `INFO` pour voir connexions et refus d'accès. |
 | `NIVEAU_LOG_WERKZEUG` | `WARNING` | Une ligne par requête HTTP dès `INFO`. |
 | `FORMAT_LOG` | `json` | `texte` pour lire à l'œil. |
-| `FICHIER_LOG` | vide (sortie standard) | Laisser vide : `docker compose logs api` recueille la sortie standard. |
+| `FICHIER_LOG` | vide (sortie standard) | **Laisser vide.** `docker compose logs api` recueille la sortie standard, et Docker la fait tourner (§7). Sous Gunicorn, chaque worker ouvrirait son propre fichier tournant sur le même chemin et le ferait tourner de son côté : les autres continueraient d'écrire dans le fichier renommé, et des lignes se perdraient. |
 | `ECHO_SQL` | `false` | Jamais en production. |
-| `POOL_TAILLE`, `POOL_DEBORDEMENT`, `POOL_RECYCLAGE_SECONDES`, `POOL_TIMEOUT_SECONDES` | `5`, `10`, `1800`, `30` | `POOL_TAILLE + POOL_DEBORDEMENT` doit rester sous le `max_connections` de Postgres (100 par défaut). |
+| `POOL_TAILLE`, `POOL_DEBORDEMENT`, `POOL_RECYCLAGE_SECONDES`, `POOL_TIMEOUT_SECONDES` | `5`, `10`, `1800`, `30` | Le pool est **par worker** Gunicorn : voir §1.4. |
+
+### 1.4 Serveur : Gunicorn
+
+Le `CMD` du `Dockerfile` lance `gunicorn --config gunicorn.conf.py
+"annuaire:creer_app()"`. Gunicorn démarre un processus maître, qui lance
+plusieurs **workers** ; chaque worker appelle `creer_app()` pour son compte et
+a donc son propre moteur SQLAlchemy, son propre pool et sa propre lecture de la
+configuration.
+
+Une seule variable, lue par `gunicorn.conf.py` et non par l'application (elle
+n'est donc pas dans `VARIABLES_ENVIRONNEMENT`). `docker-compose.yaml` la
+transmet au conteneur, avec `4` par défaut ; pour la changer, l'écrire dans le
+fichier d'environnement de production (§1.1).
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `GUNICORN_WORKERS` | `4` (`docker-compose.yaml`) | Nombre de workers, donc de requêtes traitées en même temps. |
+
+**Dimensionner les workers.** Sans `GUNICORN_WORKERS`, `gunicorn.conf.py`
+prendrait `2 × cœurs + 1`, où `multiprocessing.cpu_count()` compte les cœurs de
+l'**hôte**, pas ceux alloués au conteneur : 33 workers sur une machine à
+16 cœurs. D'où la valeur fixée dans `docker-compose.yaml`. Trois plafonds à
+vérifier avant de la changer :
+
+- **Connexions Postgres** : chaque worker peut ouvrir jusqu'à
+  `POOL_TAILLE + POOL_DEBORDEMENT` connexions (15 par défaut). Il faut
+  `GUNICORN_WORKERS × 15` sous le `max_connections` de Postgres (100 par
+  défaut), avec une marge pour `alembic`, `flask promouvoir` et `tests`, qui
+  ouvrent les leurs. Avec les défauts, **5 workers au plus** ; 4 donne
+  60 connexions et laisse la marge.
+- **Mémoire** : un hachage argon2 prend 64 Mio (`ARGON2_MEMOIRE`). Autant de
+  connexions simultanées que de workers, c'est autant de fois 64 Mio.
+- **Délai** : un worker qui ne répond pas en 30 s (`timeout`) est tué et
+  remplacé ; la requête en cours reçoit une erreur.
+
+Le reste est fixé dans `gunicorn.conf.py` : écoute sur `0.0.0.0:5000` **dans
+le conteneur** (l'exposition à l'hôte reste limitée à `127.0.0.1` par
+`docker-compose.yaml`), workers `sync`, recyclage d'un worker toutes les
+1000 requêtes environ, journal d'accès de Gunicorn coupé (celui de
+l'application suffit), journal d'erreurs sur la sortie standard.
 
 ---
 
@@ -87,6 +128,11 @@ python -c "import secrets; print(secrets.token_urlsafe(24))"   # MOT_DE_PASSE_BA
   indispensable pour `MOT_DE_PASSE_BASE`, recopié dans une URL : un `@`, un `/`
   ou un `:` la casserait.
 - Un jeu de secrets **par environnement** : jamais ceux du développement.
+- `CLE_SECRETE_JWT` doit être la **même dans tous les workers**. C'est le cas
+  en production : chaque worker la lit dans la même variable du conteneur.
+  Une clé tirée au hasard au démarrage (celle de `ConfigTest`) serait
+  différente d'un worker à l'autre : un jeton émis par l'un serait refusé par
+  l'autre, et les 401 tomberaient au hasard selon le worker qui répond.
 - Changer `CLE_SECRETE_JWT` **déconnecte tout le monde** : tous les jetons en
   circulation deviennent invalides. C'est aussi la procédure si elle a fuité.
 - Changer `MOT_DE_PASSE_BASE` après coup ne change **pas** le mot de passe de la
@@ -146,8 +192,14 @@ docker compose run --rm api alembic current     # doit afficher (head)
 ```bash
 docker compose up -d api                   # http://127.0.0.1:5000
 docker compose ps                          # api et base : « healthy »
-docker compose logs api                    # lignes JSON, aucune erreur au démarrage
+docker compose logs api                    # aucune erreur au démarrage
 ```
+
+Le journal mêle deux formats. Au démarrage, Gunicorn écrit en texte :
+`Starting gunicorn 23.0.0`, `Listening at: http://0.0.0.0:5000`, puis une
+ligne `Booting worker with pid: …` **par worker** (leur nombre doit
+correspondre à `GUNICORN_WORKERS`). Ensuite, les lignes de l'application sont
+en JSON.
 
 L'API ne démarre qu'une fois `base` en bonne santé (`depends_on`,
 `condition: service_healthy`). Chaque service a son propre test de santé :
@@ -225,6 +277,11 @@ docker compose exec -T base psql -U annuaire annuaire < sauvegarde-AAAA-MM-JJ.sq
 Après `stop` ou `down`, `docker compose up -d` retrouve toutes les données :
 utilisateurs, admin, missions, table `alembic_version`.
 
+À l'arrêt, Gunicorn cesse d'accepter des requêtes et laisse finir celles en
+cours, jusqu'à 30 s (`graceful_timeout`). Docker, lui, n'attend que 10 s par
+défaut avant de tuer le conteneur : `docker compose stop -t 30` aligne les
+deux.
+
 ---
 
 ## 6. `down` ou `down -v`
@@ -260,7 +317,29 @@ docker volume ls | grep annuaire
 
 ---
 
-## 7. Liste de vérification
+## 7. Surveiller
+
+| Quoi | Comment | Signal d'alerte |
+|---|---|---|
+| État des conteneurs | `docker compose ps` | `api` ou `base` « unhealthy », ou qui redémarre en boucle. |
+| Santé de l'API et de la base | `curl -s http://127.0.0.1:5000/api/sante` | Autre chose que 200 : la base est injoignable. |
+| Erreurs | `docker compose logs --since 1h api` | Lignes JSON de niveau `ERROR`. |
+| Workers bloqués | `docker compose logs api \| grep "WORKER TIMEOUT"` | Une requête a dépassé 30 s et son worker a été tué. |
+| Workers qui meurent | `docker compose logs api \| grep "Booting worker"` | Des lignes en dehors des démarrages et des recyclages (toutes les ~1000 requêtes) : un worker plante. |
+| Connexions Postgres | `docker compose exec base psql -U annuaire -c "select count(*) from pg_stat_activity"` | Proche de `max_connections` (100) : réduire `GUNICORN_WORKERS` ou le pool (§1.4). |
+
+Docker garde au plus 5 fichiers de 10 Mo par conteneur (`x-journal` dans
+`docker-compose.yaml`) et supprime le plus ancien au-delà : `docker compose
+logs` ne remonte donc pas indéfiniment. Pour conserver plus longtemps, copier
+le journal ailleurs avant qu'il ne tourne.
+
+Gunicorn remplace seul un worker mort ou bloqué : l'API continue de répondre
+avec les autres. Des remplacements répétés sont le symptôme à chercher, pas la
+panne.
+
+---
+
+## 8. Liste de vérification
 
 Cocher chaque ligne ; une ligne non cochée bloque la mise en production.
 
@@ -273,8 +352,13 @@ Cocher chaque ligne ; une ligne non cochée bloque la mise en production.
 - [ ] `ENVIRONNEMENT: production` est bien dans `docker-compose.yaml` pour
       `api` ; jamais `test` (clé tirée au hasard, pas de base : refus de
       démarrer).
-- [ ] Aucun `--debug` ni `FLASK_DEBUG=1` dans le `CMD` du `Dockerfile` ni dans
-      `docker-compose.yaml`.
+- [ ] Le `CMD` du `Dockerfile` lance `gunicorn`, pas `flask run` (serveur de
+      développement) ; aucun `--debug` ni `FLASK_DEBUG=1` dans le
+      `Dockerfile` ni dans `docker-compose.yaml`.
+- [ ] `GUNICORN_WORKERS × (POOL_TAILLE + POOL_DEBORDEMENT)` reste sous le
+      `max_connections` de Postgres, avec de la marge (§1.4).
+- [ ] Le nombre de lignes `Booting worker` au démarrage correspond au nombre
+      de workers voulu.
 - [ ] `/api/plante` répond 404.
 - [ ] `FAIRE_CONFIANCE_PROXY` vaut `true` seulement si un reverse proxy
       réécrit `X-Forwarded-For`.
@@ -288,6 +372,8 @@ Cocher chaque ligne ; une ligne non cochée bloque la mise en production.
       `git ls-files`.
 - [ ] Aucun secret dans `docker-compose.yaml`, `alembic.ini`, le README,
       `annuaire.http` ou les messages de commit.
+- [ ] `FICHIER_LOG` est vide, et `docker inspect annuaire-api-1 --format
+      '{{.HostConfig.LogConfig}}'` affiche `max-size` et `max-file`.
 - [ ] Le journal ne contient ni mot de passe ni jeton complet (seulement les
       8 premiers caractères, `LONGUEUR_JETON_JOURNAL`).
 
@@ -339,5 +425,6 @@ set -a; source ~/annuaire-production.env; set +a
 - `FLASK_SKIP_DOTENV=1` empêche la commande `flask` de lire `.env` d'elle-même,
   avant même que l'application ne soit créée.
 - Ensuite, la séquence est la même, sans le préfixe `docker compose run --rm api` :
-  `alembic upgrade head`, `flask run` (jamais `--debug`), inscription,
+  `alembic upgrade head`, `gunicorn --config gunicorn.conf.py
+  "annuaire:creer_app()"` (jamais `flask run`), inscription,
   `flask promouvoir`.
