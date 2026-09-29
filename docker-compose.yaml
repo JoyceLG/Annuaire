@@ -37,6 +37,9 @@ services:
     ports:
       - "127.0.0.1:5000:5000"
     environment:
+      # Les routes de débogage (/api/attente, /api/plante) n'existent pas ici.
+      # Pour une mesure ponctuelle, surcharger au lancement plutôt qu'ici :
+      #   docker compose run --rm --service-ports -e ENVIRONNEMENT=developpement api
       ENVIRONNEMENT: production
       CLE_SECRETE_JWT: ${CLE_SECRETE_JWT}
       URL_BASE_DE_DONNEES: postgresql+psycopg://annuaire:${MOT_DE_PASSE_BASE}@base:5432/annuaire

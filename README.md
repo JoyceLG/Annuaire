@@ -1,41 +1,31 @@
-# Annuaire des astronautes — Session 21 : serveur de production
+# Annuaire des astronautes — Session 22 : pourquoi FastAPI existe
 
 API REST sur Postgres ou SQLite, au choix, avec authentification JWT, rôles,
-migrations Alembic et tests pytest, dans deux conteneurs Docker. L'API y est
-désormais servie par Gunicorn, et non plus par le serveur de développement.
+migrations Alembic et tests pytest, servie par Gunicorn dans deux conteneurs
+Docker. Cette session mesure les limites de Flask sur ce code plutôt qu'en théorie.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- **Gunicorn remplace `flask run` dans l'image.** Le `CMD` du `Dockerfile`
-  lance `gunicorn --config gunicorn.conf.py "annuaire:creer_app()"` : un
-  processus maître et plusieurs workers, chacun avec sa propre application,
-  son propre moteur et son propre pool de connexions.
-- **`gunicorn.conf.py`** : écoute sur `0.0.0.0:5000` dans le conteneur
-  (l'exposition reste limitée à `127.0.0.1` par Compose), workers `sync`,
-  délai de 30 s avant de tuer un worker bloqué, arrêt en douceur, recyclage
-  d'un worker toutes les 1000 requêtes environ, journal d'accès de Gunicorn
-  coupé (celui de l'application est plus riche), erreurs sur la sortie
-  standard.
-- **Un nombre de workers fixé, `GUNICORN_WORKERS=4`**, transmis par
-  `docker-compose.yaml`. Le défaut de Gunicorn (`2 × cœurs + 1`) compte les
-  cœurs de l'hôte : 33 workers sur 16 cœurs, soit jusqu'à 495 connexions pour
-  les 100 qu'accepte Postgres. 4 workers × 15 connexions laissent la marge des
-  tests et d'Alembic.
-- **Rotation des journaux par Docker** (`x-journal` : 5 fichiers de 10 Mo par
-  conteneur, pour `api` et `base`). Sans limite, Docker garde toute la sortie
-  jusqu'à remplir le disque ; et un `FICHIER_LOG` tournant n'est pas sûr sous
-  Gunicorn, chaque worker faisant tourner le même fichier de son côté.
-- **Dépendances épinglées** dans `requirements.txt`, sur les versions
-  vérifiées dans l'image : une reconstruction ne change plus de version sans
-  qu'on l'ait décidé.
-- **`DEPLOIEMENT.md` complété** : dimensionnement des workers (connexions,
-  mémoire argon2, délai), même clé JWT dans tous les workers, arrêt en douceur
-  (`docker compose stop -t 30`), une section « Surveiller » et la liste de
-  vérification mise à jour.
-- **`annuaire.http`** : la requête de santé passe en tête du fichier.
+- **Une route `/api/attente`** (debogage.py, donc absente en production) qui
+  simule un appel lent à un service externe (`time.sleep(0.5)`). Pour un
+  worker `sync`, attendre le réseau ou attendre un minuteur, c'est pareil :
+  le worker reste bloqué. Le débit plafonne à 2 requêtes/s par worker : 8
+  requêtes/s mesurées avec 4 workers.
+- **`traduction.md`**, tenu à partir de maintenant : une ligne par concept (en
+  Flask / en FastAPI / pourquoi c'est différent). La partie « protocole et
+  serveur » est remplie (WSGI et ASGI, Gunicorn et Uvicorn, modèle de
+  concurrence, WebSocket).
+- **Une note de décision chiffrée** dans `traduction.md` : faut-il migrer
+  cette API ? Elle part des mesures (route d'attente, lecture rapide, coût
+  d'argon2, plafond de workers). Conclusion : une migration progressive,
+  limitée aux routes qui passent leur temps à attendre.
+- **Mesurer sans toucher à `docker-compose.yaml`.** Le service `api` reste en
+  `production`. Pour une mesure, on l'écrase au lancement :
+  `docker compose run --rm --service-ports -e ENVIRONNEMENT=developpement api`.
+- **`annuaire.http`** : requête `/api/attente`.
 
 ## Lancer
 
@@ -283,6 +273,7 @@ docker-compose.yaml    services base (Postgres), api, et tests (profil tests) ; 
 docker/initdb/         scripts lancés par Postgres à la création du volume (annuaire_tests)
 .dockerignore          ce qui n'entre pas dans l'image, dont .env
 DEPLOIEMENT.md         mise en production avec Docker, liste de vérification
+traduction.md          Flask → FastAPI, concept par concept, et note de décision
 CLAUDE.md              règles du projet pour Claude Code
 .claude/skills/        skill validate-projet-annuaire
 annuaire.http          requêtes prêtes à jouer (extension REST Client)

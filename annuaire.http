@@ -513,3 +513,7 @@ Authorization: Bearer {{jeton_admin}}
 ### Erreur → 500
 GET {{base}}/plante
 
+
+### OK
+GET {{base}}/attente
+
