@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from annuaire.donnees import demonstration
-from annuaire.donnees.demonstration import ASTRONAUTES
+from annuaire.donnees.demonstration import ASTRONAUTES, MISSIONS
 from main import app
 
 
@@ -30,13 +30,29 @@ def astronautes_neufs():
     """
 
     sauvegarde = copy.deepcopy(ASTRONAUTES)
-    id_courant = demonstration.id_courant
+    id_courant = demonstration.id_astronaute_courant
     yield
     ASTRONAUTES.clear()
     ASTRONAUTES.update(sauvegarde)
     # Un entier se réassigne : il faut passer par le module, que
     # demande_prochain_id relit à chaque appel.
-    demonstration.id_courant = id_courant
+    demonstration.id_astronaute_courant = id_courant
+
+
+@pytest.fixture(autouse=True)
+def missions_neuves():
+    """Restaure les missions de démonstration après chaque test.
+
+    Même raisonnement que pour les astronautes : restauration en place du
+    dictionnaire, copie profonde, et compteur d'identifiants remis à sa valeur.
+    """
+
+    sauvegarde = copy.deepcopy(MISSIONS)
+    id_courant = demonstration.id_mission_courant
+    yield
+    MISSIONS.clear()
+    MISSIONS.update(sauvegarde)
+    demonstration.id_mission_courant = id_courant
 
 
 @pytest.fixture

@@ -1,37 +1,53 @@
-# Annuaire des astronautes — Session 23 : premiers pas et différences visibles
+# Annuaire des astronautes — Session 24 : pydantic, la validation automatique
 
 API REST sur Postgres ou SQLite, au choix, avec authentification JWT, rôles,
 migrations Alembic et tests pytest, servie par Gunicorn dans deux conteneurs
-Docker. Cette session range le projet Flask dans `flask/` et réécrit les routes
-des astronautes en FastAPI, dans `fastapi/`, pour voir ce qui change.
+Docker. Cette session étend le projet FastAPI aux missions, et confie à
+Pydantic toute la validation : contraintes, union discriminée, règles qui
+croisent plusieurs champs.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- **Deux projets côte à côte.** Le projet Flask passe tel quel dans `flask/`,
-  avec ses fichiers de configuration (`docker-compose.yaml`, `alembic.ini`,
-  `pytest.ini`, `.env`). `fastapi/` accueille la réécriture. Le venv reste à
-  la racine, partagé par les deux. Le nom de projet Compose est fixé à
-  `annuaire`, pour que le déplacement garde le volume de la base.
-- **Les astronautes en FastAPI** : liste filtrable par rôle, lecture, création,
-  PUT, PATCH et DELETE, sur un dictionnaire en mémoire (pas encore de base).
-  Le routage passe par un `APIRouter` par ressource, les paramètres d'URL et
-  de query string sont typés dans la signature, et le code de statut se
-  déclare dans le décorateur.
-- **Les schémas Pydantic sont appliqués par FastAPI** : le corps est validé
-  avant l'appel de la route, et une erreur donne un **422** au format de
-  FastAPI (`detail`), là où Flask répond 400. `response_model` filtre la
-  sortie : `note_interne` ne quitte jamais l'API. Un PATCH vide, ou qui met un
-  champ à `null`, est refusé par un `model_validator`.
-- **Les erreurs métier gardent leur format.** `AstronauteIntrouvable` est
-  traduite en 404 `{"erreur": ...}` par un gestionnaire enregistré dans
-  `gestionnaires.py`, comme côté Flask.
-- **Des identifiants jamais réutilisés** : un compteur qui ne recule pas, au
-  lieu de `max + 1`, qui redonnait l'id du dernier astronaute supprimé.
-- **31 tests FastAPI**, inspirés des cas Flask, avec `TestClient`. Une fixture
-  remet le dictionnaire et le compteur à leur état initial après chaque test.
+- **Les missions en FastAPI** : liste filtrable par année (missions de cette
+  année ou plus récentes), lecture, création, PUT, PATCH et DELETE, en mémoire
+  comme les astronautes, avec la même validation stricte.
+- **Les schémas rangés par ressource** : `schemas/` remplace `schemas.py`, avec
+  `astronautes.py`, `missions.py` et `commun.py` (la fonction `nettoyer`
+  partagée).
+- **Une qualification par astronaute, en union discriminée** : pilote,
+  scientifique ou ingénieur, chacune avec ses propres champs. Le champ `type`
+  choisit le modèle à appliquer, et un type inconnu donne 422. La
+  qualification est enregistrée mais ne sort pas de l'API : `AstronauteSortie`
+  ne la déclare pas.
+- **Une qualification cohérente avec le rôle.** `QUALIFICATIONS_PAR_ROLE`
+  (`contraintes.py`) donne les types admis pour chaque rôle, et
+  `verifier_qualification` applique la règle. À la création et au PUT, un
+  `model_validator` l'appelle. En PATCH, le schéma ne voit que le corps
+  envoyé : la route vérifie donc l'astronaute tel qu'il serait après
+  modification, et `QualificationIncoherente` est traduite en 422
+  `{"erreur": ...}`.
+- **Des champs calculés en sortie** avec `@computed_field` : `initiales` pour
+  les astronautes, `programme` pour les missions. Rien n'est stocké, donc rien
+  ne peut diverger du nom.
+- **Des paramètres contraints et décrits** : `limite` (1 à 100) sur les deux
+  listes, `annee` bornée par `ANNEE_MINIMALE`, identifiant de lecture
+  `Path(ge=1)`, chacun avec sa `description`.
+- **Des types contraints réutilisables** : `Nom`, `Nationalite` et `Annee`
+  sont des types `Annotated`, partagés par l'entrée et le PATCH. Un
+  `BeforeValidator(nettoyer)` retire les espaces autour de la valeur avant le
+  contrôle de longueur, si bien qu'un nom fait d'espaces est refusé par
+  `min_length`.
+- **Un compteur d'identifiants par ressource**, qui part du plus grand
+  identifiant du jeu de démonstration.
+- **77 tests FastAPI**, dont un fichier `test_missions.py` et des tests
+  paramétrés pour chaque combinaison rôle / qualification. Une seconde
+  fixture remet les missions et leur compteur à leur état initial.
+- **`traduction.md`** : section « Validation et sérialisation » remplie, ainsi
+  que les pièges rencontrés, les réflexes Flask à désapprendre et un premier
+  point où Flask fait mieux.
 
 ## Lancer
 
@@ -110,11 +126,12 @@ cd fastapi
 source ../.venv/bin/activate
 pip install -r requirements.txt
 fastapi dev main.py                         # http://127.0.0.1:8000
-pytest -q                                   # 31 tests
+pytest -q                                   # 77 tests
 ```
 
-Il n'a ni base ni `.env` : les astronautes vivent en mémoire et repartent du
-jeu de démonstration (Neil Armstrong, Alan Bean) à chaque démarrage.
+Il n'a ni base ni `.env` : astronautes et missions vivent en mémoire et
+repartent du jeu de démonstration (Neil Armstrong, Alan Bean, Sophie Adenot ;
+Apollo 11, 12 et 13) à chaque démarrage.
 
 ## Docker, cas par cas
 
@@ -306,12 +323,12 @@ flask/                     le projet Flask ; les commandes se lancent d'ici
 fastapi/                   le projet FastAPI ; ses commandes se lancent d'ici
 ├── main.py                l'application : routeurs et gestionnaires d'erreurs
 ├── annuaire/
-│   ├── contraintes.py     longueurs et rôles admis
-│   ├── schemas.py         entrée, PATCH et sortie (Pydantic)
-│   ├── donnees/           demonstration.py : les astronautes en mémoire et le compteur d'id
+│   ├── contraintes.py     longueurs, bornes, rôles et qualifications admises par rôle
+│   ├── schemas/           entrée, PATCH et sortie (Pydantic) : astronautes.py, missions.py, commun.py
+│   ├── donnees/           demonstration.py : astronautes et missions en mémoire, un compteur d'id chacun
 │   ├── erreurs.py         les exceptions métier
 │   ├── gestionnaires.py   exception métier → code HTTP
-│   └── routes/            un APIRouter par ressource : astronautes.py, sante.py
+│   └── routes/            un APIRouter par ressource : astronautes.py, missions.py, sante.py
 ├── tests/                 conftest.py + un fichier par domaine
 ├── requirements.txt
 └── pytest.ini             met fastapi/ sur sys.path pour que `pytest` trouve `annuaire`

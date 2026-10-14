@@ -1,12 +1,14 @@
 ---
 name: validate-projet-annuaire
-description: Valide une session de la formation sur le projet Annuaire — relit le code de la session, lance les tests, fait des retours avant toute correction, met le README à jour, puis crée le commit unique de la session et le fusionne dans main. À utiliser quand l'autrice demande de valider, clôturer, commiter ou fusionner sa session.
+description: Valide une session de la formation sur le projet Annuaire — relit le code de la session, lance les tests, fait des retours avant toute correction, met le README à jour, crée le commit unique de la session sur sa branche, puis la fusionne dans main seulement après vérification et feu vert de l'autrice. À utiliser quand l'autrice demande de valider, clôturer, commiter ou fusionner sa session.
 ---
 
 # Valider une session du projet Annuaire
 
 Dérouler les étapes dans l'ordre. Deux points d'arrêt obligatoires : après la
-revue (étape 4) et avant de pousser (étape 8). Tout est rédigé en français.
+revue (étape 4) et après le commit, sur la branche de session (étape 7).
+**Ne jamais fusionner dans `main` sans le feu vert explicite de l'autrice.**
+Tout est rédigé en français.
 
 Rappel des règles du projet : voir `CLAUDE.md`. En particulier, **aucune
 référence aux sessions suivantes**, ni dans le code, ni dans la doc, ni dans le
@@ -179,30 +181,43 @@ Session N — titre
 <ligne d'attribution Co-Authored-By prévue par Claude Code>
 ```
 
-## 7. Fusionner dans main
+## 7. Rester sur la branche de session — point d'arrêt
+
+Ne pas fusionner. L'autrice vérifie la branche `sessionNN` avant toute fusion
+dans `main`.
+
+Demander confirmation avant de publier la branche, puis :
 
 ```bash
+git fetch
+git push -u origin sessionNN           # --force-with-lease si le commit a été amendé après un push
+git status -sb                         # doit afficher sessionNN...origin/sessionNN, sans écart
+```
+
+Donner le hash et le titre du commit, puis **s'arrêter et attendre** le feu
+vert explicite pour fusionner. Si l'autrice demande des retouches, amender le
+commit de la session (un seul commit par session) et repousser la branche.
+
+## 8. Fusionner et pousser main — après feu vert
+
+Seulement quand l'autrice a dit de fusionner :
+
+```bash
+git fetch
 git switch main
 git merge --ff-only sessionNN
 git log --oneline -3
+git push origin main
+git push origin --delete sessionNN
+git branch -D sessionNN
+git status -sb                         # doit afficher main...origin/main, sans écart
 ```
 
 Si l'avance rapide est refusée, `main` a bougé : s'arrêter et le signaler, ne
 jamais faire de merge commit ni de rebase de `main`.
 
-## 8. Pousser — point d'arrêt
-
-Demander confirmation avant de publier, puis :
-
-```bash
-git push origin main
-git push origin --delete sessionNN     # seulement si la branche existe sur GitHub
-git branch -D sessionNN
-git status -sb                         # doit afficher main...origin/main, sans écart
-```
-
 ## 9. Bilan
 
 En quelques lignes : le commit (hash et titre), le nombre de tests, ce qui a été
 corrigé à la demande de l'autrice, ce qui a été signalé mais laissé tel quel,
-et l'état de GitHub (poussé ou non).
+et l'état de GitHub (branche de session poussée, `main` fusionné ou non).

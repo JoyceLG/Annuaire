@@ -4,24 +4,48 @@ FastAPI répond 422 quand le corps ou les
 paramètres ne passent pas la validation Pydantic.
 """
 
-EDGAR_MITCHELL = {
+import pytest
+
+# Les champs d'identité, communs à l'entrée et à la sortie.
+EDGAR_MITCHELL_IDENTITE = {
     "nom": "Edgar Mitchell",
     "role": "pilote",
     "nationalite": "Etats-Unis",
 }
+QUALIFICATION_PILOTE = {"type": "pilote", "heures_vol": 1500, "appareil": "T-38"}
+QUALIFICATION_SCIENTIFIQUE = {
+    "type": "scientifique",
+    "discipline": "Astronomie",
+    "doctorat": True,
+}
+QUALIFICATION_INGENIEUR = {
+    "type": "ingenieur",
+    "specialite": "Propulsion",
+    "experience": 10,
+}
+# Corps d'une création ou d'un PUT : l'identité plus une qualification
+# cohérente avec le rôle.
+EDGAR_MITCHELL = {**EDGAR_MITCHELL_IDENTITE, "qualification": QUALIFICATION_PILOTE}
+# Ce que l'API renvoie pour EDGAR_MITCHELL, hors identifiant : AstronauteSortie
+# n'expose pas la qualification, mais ajoute les initiales.
+EDGAR_MITCHELL_SORTIE = {**EDGAR_MITCHELL_IDENTITE, "initiales": "EM"}
 
 
-# Liste complète : les deux astronautes du jeu de démonstration
+# Liste complète : les trois astronautes du jeu de démonstration
 def test_liste_renvoie_tous_les_astronautes(client):
     reponse = client.get("/api/astronautes")
     assert reponse.status_code == 200
-    assert [a["nom"] for a in reponse.json()] == ["Neil Armstrong", "Alan Bean"]
+    assert [a["nom"] for a in reponse.json()] == [
+        "Neil Armstrong",
+        "Alan Bean",
+        "Sophie Adenot",
+    ]
 
 
-# Le champ interne des données ne sort jamais dans la réponse
-def test_liste_n_expose_pas_la_note_interne(client):
+# La qualification est enregistrée mais ne sort jamais dans la réponse
+def test_liste_n_expose_pas_la_qualification(client):
     reponse = client.get("/api/astronautes")
-    assert all("note_interne" not in a for a in reponse.json())
+    assert all("qualification" not in a for a in reponse.json())
 
 
 # Lecture d'un astronaute existant
@@ -33,6 +57,7 @@ def test_lire_astronaute_existant(client):
         "nom": "Neil Armstrong",
         "role": "commandant",
         "nationalite": "Etats-Unis",
+        "initiales": "NA",
     }
 
 
@@ -58,6 +83,9 @@ def test_liste_filtre_par_role(client):
 
 # Filtre sans résultat : 200 et tableau vide
 def test_liste_filtre_sans_resultat(client):
+    # Le jeu de démonstration couvre tous les rôles : on retire la seule
+    # spécialiste pour obtenir un filtre qui ne trouve rien.
+    client.delete("/api/astronautes/3")
     reponse = client.get("/api/astronautes?role=specialiste")
     assert reponse.status_code == 200
     assert reponse.json() == []
@@ -67,7 +95,7 @@ def test_liste_filtre_sans_resultat(client):
 def test_creation_valide(client):
     reponse = client.post("/api/astronautes", json=EDGAR_MITCHELL)
     assert reponse.status_code == 201
-    assert reponse.json() == {"id": 3, **EDGAR_MITCHELL}
+    assert reponse.json() == {"id": 4, **EDGAR_MITCHELL_SORTIE}
     relecture = client.get(reponse.headers["Location"])
     assert relecture.status_code == 200
     assert relecture.json()["nom"] == "Edgar Mitchell"
@@ -80,7 +108,7 @@ def test_creations_successives_ont_des_identifiants_distincts(client):
         "/api/astronautes", json={**EDGAR_MITCHELL, "nom": "Alan Shepard"}
     )
     assert premier.json()["id"] != second.json()["id"]
-    assert len(client.get("/api/astronautes").json()) == 4
+    assert len(client.get("/api/astronautes").json()) == 5
 
 
 # Un créé ne reçoit pas l'identifiant déjà utilisé par un supprimé
@@ -108,7 +136,7 @@ def test_creation_avec_champ_manquant(client):
         json={"nom": "Edgar Mitchell", "nationalite": "Etats-Unis"},
     )
     assert reponse.status_code == 422
-    assert len(client.get("/api/astronautes").json()) == 2
+    assert len(client.get("/api/astronautes").json()) == 3
 
 
 # Rôle invalide : 422
@@ -116,6 +144,53 @@ def test_creation_avec_role_invalide(client):
     reponse = client.post(
         "/api/astronautes",
         json={**EDGAR_MITCHELL, "role": "cosmonaute"},
+    )
+    assert reponse.status_code == 422
+
+
+# Chaque rôle accepte les qualifications que lui attribue QUALIFICATIONS_PAR_ROLE
+@pytest.mark.parametrize(
+    "role, qualification",
+    [
+        ("commandant", QUALIFICATION_PILOTE),
+        ("commandant", QUALIFICATION_SCIENTIFIQUE),
+        ("commandant", QUALIFICATION_INGENIEUR),
+        ("pilote", QUALIFICATION_PILOTE),
+        ("specialiste", QUALIFICATION_SCIENTIFIQUE),
+        ("specialiste", QUALIFICATION_INGENIEUR),
+    ],
+)
+def test_creation_avec_qualification_coherente(client, role, qualification):
+    reponse = client.post(
+        "/api/astronautes",
+        json={**EDGAR_MITCHELL, "role": role, "qualification": qualification},
+    )
+    assert reponse.status_code == 201
+
+
+# Qualification incohérente avec le rôle : 422, et rien n'est créé
+@pytest.mark.parametrize(
+    "role, qualification",
+    [
+        ("pilote", QUALIFICATION_SCIENTIFIQUE),
+        ("pilote", QUALIFICATION_INGENIEUR),
+        ("specialiste", QUALIFICATION_PILOTE),
+    ],
+)
+def test_creation_avec_qualification_incoherente(client, role, qualification):
+    reponse = client.post(
+        "/api/astronautes",
+        json={**EDGAR_MITCHELL, "role": role, "qualification": qualification},
+    )
+    assert reponse.status_code == 422
+    assert len(client.get("/api/astronautes").json()) == 3
+
+
+# Type de qualification inconnu du discriminateur : 422
+def test_creation_avec_type_de_qualification_inconnu(client):
+    reponse = client.post(
+        "/api/astronautes",
+        json={**EDGAR_MITCHELL, "qualification": {"type": "cuisinier"}},
     )
     assert reponse.status_code == 422
 
@@ -163,7 +238,7 @@ def test_put_remplace_reellement(client):
     reponse = client.put("/api/astronautes/1", json=EDGAR_MITCHELL)
     assert reponse.status_code == 200
     relecture = client.get("/api/astronautes/1")
-    assert relecture.json() == {"id": 1, **EDGAR_MITCHELL}
+    assert relecture.json() == {"id": 1, **EDGAR_MITCHELL_SORTIE}
 
 
 # PUT incomplet : 422, et l'astronaute est intact
@@ -171,6 +246,16 @@ def test_put_avec_champs_incomplets(client):
     reponse = client.put(
         "/api/astronautes/1",
         json={"nom": "Modifie", "nationalite": "Etats-Unis"},
+    )
+    assert reponse.status_code == 422
+    assert client.get("/api/astronautes/1").json()["nom"] == "Neil Armstrong"
+
+
+# PUT avec une qualification incohérente : 422, et l'astronaute est intact
+def test_put_avec_qualification_incoherente(client):
+    reponse = client.put(
+        "/api/astronautes/1",
+        json={**EDGAR_MITCHELL, "qualification": QUALIFICATION_SCIENTIFIQUE},
     )
     assert reponse.status_code == 422
     assert client.get("/api/astronautes/1").json()["nom"] == "Neil Armstrong"
@@ -191,6 +276,7 @@ def test_patch_ne_touche_que_les_champs_envoyes(client):
         "nom": "Modifie",
         "role": "commandant",
         "nationalite": "Etats-Unis",
+        "initiales": "M",
     }
     assert reponse.json() == attendu
     assert client.get("/api/astronautes/1").json() == attendu
@@ -198,9 +284,9 @@ def test_patch_ne_touche_que_les_champs_envoyes(client):
 
 # PATCH complet : tous les champs envoyés changent
 def test_patch_modifie_avec_tous_les_champs(client):
-    reponse = client.patch("/api/astronautes/1", json=EDGAR_MITCHELL)
+    reponse = client.patch("/api/astronautes/1", json=EDGAR_MITCHELL_IDENTITE)
     assert reponse.status_code == 200
-    assert client.get("/api/astronautes/1").json() == {"id": 1, **EDGAR_MITCHELL}
+    assert client.get("/api/astronautes/1").json() == {"id": 1, **EDGAR_MITCHELL_SORTIE}
 
 
 # PATCH avec rôle invalide : 422, et l'astronaute est intact
@@ -224,6 +310,52 @@ def test_patch_champ_null(client):
     reponse = client.patch("/api/astronautes/1", json={"nom": None})
     assert reponse.status_code == 422
     assert client.get("/api/astronautes/1").json()["nom"] == "Neil Armstrong"
+
+
+# PATCH de la seule qualification : 200, et les autres champs sont intacts
+def test_patch_de_la_qualification(client):
+    reponse = client.patch(
+        "/api/astronautes/1",
+        json={"qualification": QUALIFICATION_SCIENTIFIQUE},
+    )
+    assert reponse.status_code == 200
+    assert reponse.json()["nom"] == "Neil Armstrong"
+
+
+# PATCH du seul rôle, cohérent avec la qualification enregistrée : 200
+def test_patch_du_role_coherent_avec_la_qualification_enregistree(client):
+    # Neil Armstrong, commandant, a une qualification de pilote.
+    reponse = client.patch("/api/astronautes/1", json={"role": "pilote"})
+    assert reponse.status_code == 200
+    assert reponse.json()["role"] == "pilote"
+
+
+# PATCH du seul rôle, incohérent avec la qualification enregistrée : 422, intact
+def test_patch_du_role_incoherent_avec_la_qualification_enregistree(client):
+    # Alan Bean, pilote, a une qualification de pilote.
+    reponse = client.patch("/api/astronautes/2", json={"role": "specialiste"})
+    assert reponse.status_code == 422
+    assert "erreur" in reponse.json()
+    assert client.get("/api/astronautes/2").json()["role"] == "pilote"
+
+
+# PATCH de la seule qualification, incohérente avec le rôle enregistré : 422
+def test_patch_de_la_qualification_incoherente_avec_le_role_enregistre(client):
+    reponse = client.patch(
+        "/api/astronautes/2",
+        json={"qualification": QUALIFICATION_SCIENTIFIQUE},
+    )
+    assert reponse.status_code == 422
+
+
+# PATCH du rôle et de la qualification, incohérents entre eux : 422, intact
+def test_patch_du_role_et_de_la_qualification_incoherents(client):
+    reponse = client.patch(
+        "/api/astronautes/1",
+        json={"role": "pilote", "qualification": QUALIFICATION_SCIENTIFIQUE},
+    )
+    assert reponse.status_code == 422
+    assert client.get("/api/astronautes/1").json()["role"] == "commandant"
 
 
 # PATCH sur un inexistant : 404

@@ -47,20 +47,23 @@
 
 ## 3 — Validation et sérialisation
 
-*À remplir en session 24.*
+*Rempli en session 24.*
 
 | Concept | En Flask | En FastAPI | Pourquoi c'est différent | État |
 |---|---|---|---|---|
-| Lire et valider le corps JSON | | | | |
-| Champs obligatoires | | | | |
-| Contraintes sur un champ | | | | |
-| Valeurs autorisées (énumération) | | | | |
-| Refuser les champs inconnus | | | | |
-| Modification partielle (PATCH) | | | | |
-| Filtrer les champs de sortie | | | | |
-| Format des erreurs de validation | | | | |
-| Code de statut d'une erreur de validation | | | | |
-| Traduire les erreurs vers mon format | | | | |
+| Lire et valider le corps JSON | `champs = lire_corps(schemas.AstronauteEntree)` : `request.get_json(silent=True)`, refus d'un corps qui n'est pas un objet, puis `model_validate` dans un `try/except ValidationError`. | Un paramètre annoté par le modèle : `def creer_astronaute(entree: AstronauteEntree, ...)`. La route reçoit un objet déjà validé. | Pydantic est le même des deux côtés : seul change qui l'appelle. En Flask, c'est mon code (`lire_corps`, une trentaine de lignes) ; en FastAPI, c'est le framework, avant même d'appeler la route. Un paramètre typé par un `BaseModel` est lu dans le corps, comme un `int` hors du chemin est lu dans la query string. | ✅ |
+| Champs obligatoires | Un champ sans valeur par défaut dans le modèle : `nom: Nom`. | Identique : `nom: Nom`. Un champ absent donne 422 et rien n'est créé. | Aucune différence de déclaration : c'est Pydantic qui décide. La différence est dans la réponse (400 contre 422, voir plus bas). | ✅ |
+| Contraintes sur un champ | Types réutilisables avec `Annotated` : `Nom = Annotated[str, StringConstraints(...), AfterValidator(_non_vide)]`. | Les mêmes types `Annotated`, partagés par l'entrée et le PATCH : `Nom = Annotated[str, BeforeValidator(nettoyer), StringConstraints(min_length=1, max_length=LONGUEUR_NOM)]`. | Même Pydantic, donc mêmes outils. L'ordre change : en Flask, `AfterValidator(_non_vide)` contrôle après coup que la valeur nettoyée n'est pas vide ; ici, `BeforeValidator` nettoie la valeur brute avant le contrôle de longueur, donc `"   "` devient `""`, que `min_length=1` refuse sans validateur supplémentaire. | ✅ |
+| Valeurs autorisées (énumération) | `RoleAstronaute = Literal["commandant", "pilote", "specialiste"]` dans `contraintes.py`. | Le même `Literal`, utilisé à la fois dans le schéma et comme type du paramètre de query `role`. `?role=cosmonaute` et `{"role": "cosmonaute"}` donnent 422. | Un `Literal` n'est pas une `Enum` : il n'y a pas d'attribut `RoleAstronaute.PILOTE`, on compare à la chaîne `"pilote"`. En FastAPI, le même type valide le corps et la query string, alors qu'en Flask la query string se contrôle à la main. | ✅ |
+| Refuser les champs inconnus | `model_config = ConfigDict(extra="forbid", strict=True)`. | Identique. `{"salaire": ...}` donne 422 ; `strict=True` refuse `"1971"` pour une année et `42` pour un nom. | Configuration du modèle, donc identique. Sans `strict`, Pydantic convertirait `"1971"` en `1971` sans le dire. | ✅ |
+| Modification partielle (PATCH) | `lire_corps(schemas.AstronautePatch, partiel=True)`, qui fait `model_dump(exclude_unset=partiel)` une fois pour toutes les routes. Corps vide refusé dans `lire_corps`. | Champs `X \| None = None`, `@model_validator(mode="after")` qui refuse un corps vide (`model_fields_set`) et un `null` envoyé, puis `entree.model_dump(exclude_unset=True)` **dans chaque route**. | `model_fields_set` distingue « absent » de « envoyé à `null` », que la valeur par défaut `None` confond. En Flask, `exclude_unset` vivait dans un seul helper ; en FastAPI, chaque route PATCH doit y penser : l'oublier écrase les champs absents par `None` et la réponse plante (piège rencontré sur les missions). | ✅ |
+| Validation qui croise plusieurs champs | Pas de cas dans le projet Flask. | `@model_validator(mode="after")` sur `AstronauteEntree` : la qualification doit être admise par le rôle (`QUALIFICATIONS_PAR_ROLE`, `verifier_qualification`). En PATCH, la vérification se fait dans la route, sur `{**astronaute, **modifications}`. | Un schéma ne voit que le corps de la requête. Quand le PATCH n'envoie que le rôle, la qualification à comparer est celle qui est enregistrée : seule la route y a accès. `QualificationIncoherente` hérite de `ValueError` pour servir aux deux endroits : Pydantic la convertit en erreur de validation, et dans la route son gestionnaire répond 422. | ✅ |
+| Champ dont la forme dépend d'un type (union discriminée) | Pas de cas dans le projet Flask. | `Qualification = Annotated[QualificationPilote \| QualificationScientifique \| QualificationIngenieur, Field(discriminator="type")]`, chaque classe ayant son `type: Literal["pilote"]`, `Literal["scientifique"]` ou `Literal["ingenieur"]`. | Le discriminateur lit `type` et ne valide que contre la classe correspondante : les erreurs portent sur le bon modèle, et un type inconnu (`"cuisinier"`) donne 422. Il valide la forme de la qualification, pas son adéquation au rôle (ligne précédente). | ✅ |
+| Filtrer les champs de sortie | `en_dict()` sur le modèle SQLAlchemy, écrit à la main, champ par champ. | `response_model=AstronauteSortie` : `qualification` et `note_interne` sont retirées sans code. | Le contrat de sortie est un modèle séparé du modèle d'entrée : l'API accepte une qualification sans la renvoyer. En Flask, un champ ajouté au modèle n'apparaît que si je pense à l'ajouter dans `en_dict`. | ✅ |
+| Champ calculé en sortie | `programme` calculé par `calculer_programme(nom)` dans `donnees/missions.py`, puis stocké en base. | `@computed_field` sur le modèle de sortie : `initiales` (astronautes), `programme` (missions). Rien n'est stocké. | Calculé à la sortie, le champ ne peut pas diverger de ce dont il dépend : un PATCH du nom change le programme sans autre code. En Flask, stocker la valeur permet de filtrer dessus en SQL, au prix de la recalculer à chaque modification. | ✅ |
+| Format des erreurs de validation | `{"erreur": "Validation échouée", "details": {"nom": "..."}}`, construit par `convertir_erreurs`. | `{"detail": [{"type", "loc", "msg", "input", ...}]}` : la liste de `erreur.errors()` telle quelle. Les erreurs levées dans une route (`QualificationIncoherente`) répondent `{"erreur": "..."}`. | FastAPI expose le format de Pydantic sans le transformer : plus détaillé (type d'erreur, chemin complet, valeur reçue), mais il n'a pas la forme du reste de mon API. Le projet a donc deux formats d'erreur 422, selon que l'erreur vient du schéma ou de la route. | ✅ |
+| Code de statut d'une erreur de validation | 400, par le gestionnaire de `DonneesInvalides`. | 422 Unprocessable Entity, y compris pour un JSON mal formé ou un paramètre d'URL invalide. | 400 dit « requête mal formée » ; 422 dit « requête bien formée mais contenu refusé ». FastAPI fait ce choix pour toute erreur de validation, donc les clients et les tests attendent 422. | ✅ |
+| Traduire les erreurs vers mon format | `convertir_erreurs(erreur)` appelé dans `lire_corps`, avant de lever `DonneesInvalides`. | `@app.exception_handler(RequestValidationError)` dans `enregistrer_gestionnaires`. Pour l'instant, il renvoie `{"detail": jsonable_encoder(erreur.errors())}`, le format d'origine. | La validation se fait avant la route : impossible de l'entourer d'un `try/except`. Le seul point d'accroche est le gestionnaire de `RequestValidationError`. `jsonable_encoder` est nécessaire car `errors()` peut contenir des objets non sérialisables (l'exception dans `ctx`). | ✅ |
 
 ---
 
@@ -148,8 +151,12 @@
 
 | Symptôme observé | Cause réelle | Comment l'éviter |
 |---|---|---|
-| | | |
-| | | |
+| L'application ne démarre plus : `TypeError` à l'import de `contraintes.py`. | `Dict["commandant": "commandant", ...]` est une annotation de type mal écrite, pas un dictionnaire. | Une valeur s'écrit `{...}` ; le type se met en annotation : `QUALIFICATIONS_PAR_ROLE: dict[str, frozenset[str]] = {...}`. |
+| `RoleAstronaute.PILOTE` lève `AttributeError`. | `RoleAstronaute` est un `Literal`, pas une `Enum`. | Comparer à la chaîne : `self.role == "pilote"`. |
+| Un validateur du PATCH lit `self.qualification` et lève `AttributeError`. | Le validateur était sur `AstronautePatch`, qui n'avait pas ce champ. | Mettre un validateur sur le modèle qui porte tous les champs qu'il compare. |
+| PATCH de `{"role": "specialiste"}` accepté alors que la qualification enregistrée est celle d'un pilote. | Le schéma ne voit que le corps envoyé, pas l'état stocké. | Vérifier dans la route, sur l'objet fusionné `{**stocke, **modifications}`, avant de l'enregistrer. |
+| PATCH d'une mission avec le seul `nom` : `ResponseValidationError`, `annee` vaut `None`. | `entree.model_dump()` sans `exclude_unset=True` : les champs absents sont écrits avec leur défaut `None`. | Toujours `model_dump(exclude_unset=True)` en PATCH. |
+| `DELETE` répond 200 avec un corps `null`. | Pas de `status_code=204` dans le décorateur : FastAPI sérialise le `None` renvoyé. | Déclarer `status_code=204` sur toute route qui ne renvoie rien. |
 
 ---
 
@@ -160,8 +167,9 @@
 
 | Le réflexe | Ce qu'il faut faire à la place |
 |---|---|
-| | |
-| | |
+| Lire le corps à la main puis l'envoyer à `model_validate` dans un `try/except ValidationError`. | Annoter le paramètre de la route avec le modèle : FastAPI valide avant l'appel. |
+| Compter sur un helper (`lire_corps(..., partiel=True)`) pour exclure les champs absents d'un PATCH. | Écrire `model_dump(exclude_unset=True)` dans chaque route PATCH. |
+| Attendre 400 sur une donnée invalide. | Attendre 422. |
 
 ---
 
@@ -172,7 +180,7 @@
 
 | Sujet | Pourquoi Flask s'en sort mieux |
 |---|---|
-| | |
+| Un format d'erreur unique | Toutes les erreurs de validation passent par `lire_corps` et `DonneesInvalides` : un seul format, `{"erreur", "details"}`. En FastAPI, les erreurs du schéma (`{"detail": [...]}`) et celles levées dans une route (`{"erreur": ...}`) ont deux formes, sauf à réécrire le gestionnaire de `RequestValidationError`. |
 
 ---
 

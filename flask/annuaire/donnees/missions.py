@@ -8,10 +8,10 @@ from ..erreurs import MissionDejaExistante, MissionIntrouvable
 from ..modeles import Mission
 
 
-def calculer_programme(nom_mission: str) -> str:
+def calculer_programme(nom: str) -> str:
     """Le programme se déduit du nom : « Apollo 11 » → « Apollo »."""
 
-    return nom_mission.split()[0]
+    return nom.split()[0]
 
 
 def trouver(bdd: Session, id_mission: int) -> Mission:
