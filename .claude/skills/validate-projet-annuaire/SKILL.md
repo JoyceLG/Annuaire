@@ -12,8 +12,12 @@ Rappel des règles du projet : voir `CLAUDE.md`. En particulier, **aucune
 référence aux sessions suivantes**, ni dans le code, ni dans la doc, ni dans le
 commit.
 
-Commandes Python : `.venv/bin/python`, `.venv/bin/alembic`,
-`.venv/bin/ruff`.
+Le projet Flask vit dans `flask/` : **les commandes des étapes 2 et 3 se
+lancent depuis ce dossier** (`cd flask`), et les chemins de fichiers qui y
+figurent (`annuaire/`, `migrations/`, `.env`…) sont relatifs à lui. Le venv
+est à la racine du dépôt : `../.venv/bin/python`, `../.venv/bin/alembic`,
+`../.venv/bin/ruff`. Les commandes git, le README et `traduction.md` se
+traitent depuis la racine.
 
 ## 1. Situer la session
 
@@ -51,7 +55,8 @@ contexte compte (config, sécurité, tests).
 Lancer toutes ces vérifications, puis les rapporter ensemble :
 
 ```bash
-.venv/bin/python -m pytest -q
+cd flask
+../.venv/bin/python -m pytest -q
 ```
 
 - **Tests** : tous doivent passer. Noter le nombre de tests (il va dans le README).
@@ -64,10 +69,12 @@ Lancer toutes ces vérifications, puis les rapporter ensemble :
   passer, c'est la preuve que le code ne dépend d'aucune base.
 - **Migrations** : sur la base de test, jamais sur celle de l'API :
   ```bash
-  URL_BASE_TESTS=$(grep '^URL_BASE_TESTS=' .env | cut -d= -f2-)   # vit dans .env, pas dans le shell
-  URL_BASE_DE_DONNEES=$URL_BASE_TESTS .venv/bin/alembic upgrade head
-  URL_BASE_DE_DONNEES=$URL_BASE_TESTS .venv/bin/alembic check
-  URL_BASE_DE_DONNEES=$URL_BASE_TESTS .venv/bin/alembic downgrade base
+  # Lue par python-dotenv, pas par grep : l'URL peut contenir
+  # ${MOT_DE_PASSE_BASE}, que seul dotenv remplace.
+  URL_BASE_TESTS=$(../.venv/bin/python -c "from dotenv import dotenv_values; print(dotenv_values('.env')['URL_BASE_TESTS'])")
+  URL_BASE_DE_DONNEES=$URL_BASE_TESTS ../.venv/bin/alembic upgrade head
+  URL_BASE_DE_DONNEES=$URL_BASE_TESTS ../.venv/bin/alembic check
+  URL_BASE_DE_DONNEES=$URL_BASE_TESTS ../.venv/bin/alembic downgrade base
   ```
   `alembic check` doit répondre « No new upgrade operations detected ». Sinon,
   un modèle a changé sans migration. La descente doit aller jusqu'au bout.
@@ -75,7 +82,7 @@ Lancer toutes ces vérifications, puis les rapporter ensemble :
   ne doit rien trouver (règle « Indépendance de la base » de `CLAUDE.md`).
 - **Ruff**, sur les seuls fichiers Python modifiés, à titre indicatif (le projet
   n'est pas propre au sens de ruff, ne pas signaler l'existant) :
-  `.venv/bin/ruff check <fichiers modifiés>`.
+  `../.venv/bin/ruff check <fichiers modifiés>`.
 - **Les nouveaux tests peuvent-ils échouer ?** Pour chaque test ajouté, repérer
   les `assert` toujours vrais (`... else True`, `hasattr` sur un attribut qui
   n'existe pas, test qui ne fait qu'importer un module). En cas de doute, casser

@@ -1,39 +1,51 @@
-# Annuaire des astronautes — Session 22 : pourquoi FastAPI existe
+# Annuaire des astronautes — Session 23 : premiers pas et différences visibles
 
 API REST sur Postgres ou SQLite, au choix, avec authentification JWT, rôles,
 migrations Alembic et tests pytest, servie par Gunicorn dans deux conteneurs
-Docker. Cette session mesure les limites de Flask sur ce code plutôt qu'en théorie.
+Docker. Cette session range le projet Flask dans `flask/` et réécrit les routes
+des astronautes en FastAPI, dans `fastapi/`, pour voir ce qui change.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- **Une route `/api/attente`** (debogage.py, donc absente en production) qui
-  simule un appel lent à un service externe (`time.sleep(0.5)`). Pour un
-  worker `sync`, attendre le réseau ou attendre un minuteur, c'est pareil :
-  le worker reste bloqué. Le débit plafonne à 2 requêtes/s par worker : 8
-  requêtes/s mesurées avec 4 workers.
-- **`traduction.md`**, tenu à partir de maintenant : une ligne par concept (en
-  Flask / en FastAPI / pourquoi c'est différent). La partie « protocole et
-  serveur » est remplie (WSGI et ASGI, Gunicorn et Uvicorn, modèle de
-  concurrence, WebSocket).
-- **Une note de décision chiffrée** dans `traduction.md` : faut-il migrer
-  cette API ? Elle part des mesures (route d'attente, lecture rapide, coût
-  d'argon2, plafond de workers). Conclusion : une migration progressive,
-  limitée aux routes qui passent leur temps à attendre.
-- **Mesurer sans toucher à `docker-compose.yaml`.** Le service `api` reste en
-  `production`. Pour une mesure, on l'écrase au lancement :
-  `docker compose run --rm --service-ports -e ENVIRONNEMENT=developpement api`.
-- **`annuaire.http`** : requête `/api/attente`.
+- **Deux projets côte à côte.** Le projet Flask passe tel quel dans `flask/`,
+  avec ses fichiers de configuration (`docker-compose.yaml`, `alembic.ini`,
+  `pytest.ini`, `.env`). `fastapi/` accueille la réécriture. Le venv reste à
+  la racine, partagé par les deux. Le nom de projet Compose est fixé à
+  `annuaire`, pour que le déplacement garde le volume de la base.
+- **Les astronautes en FastAPI** : liste filtrable par rôle, lecture, création,
+  PUT, PATCH et DELETE, sur un dictionnaire en mémoire (pas encore de base).
+  Le routage passe par un `APIRouter` par ressource, les paramètres d'URL et
+  de query string sont typés dans la signature, et le code de statut se
+  déclare dans le décorateur.
+- **Les schémas Pydantic sont appliqués par FastAPI** : le corps est validé
+  avant l'appel de la route, et une erreur donne un **422** au format de
+  FastAPI (`detail`), là où Flask répond 400. `response_model` filtre la
+  sortie : `note_interne` ne quitte jamais l'API. Un PATCH vide, ou qui met un
+  champ à `null`, est refusé par un `model_validator`.
+- **Les erreurs métier gardent leur format.** `AstronauteIntrouvable` est
+  traduite en 404 `{"erreur": ...}` par un gestionnaire enregistré dans
+  `gestionnaires.py`, comme côté Flask.
+- **Des identifiants jamais réutilisés** : un compteur qui ne recule pas, au
+  lieu de `max + 1`, qui redonnait l'id du dernier astronaute supprimé.
+- **31 tests FastAPI**, inspirés des cas Flask, avec `TestClient`. Une fixture
+  remet le dictionnaire et le compteur à leur état initial après chaque test.
 
 ## Lancer
+
+Le projet Flask vit dans `flask/`, et **toutes les commandes qui suivent se
+lancent depuis ce dossier** : `docker-compose.yaml`, `alembic.ini`,
+`pytest.ini` et `.env` y sont. L'environnement virtuel, lui, est à la racine
+du dépôt (`.venv`).
 
 ### Installer
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+cd flask
+python3 -m venv ../.venv
+source ../.venv/bin/activate
 pip install -r requirements.txt
 cp .env.exemple .env
 ```
@@ -88,6 +100,21 @@ test.
 
 Pour lancer la même suite dans l'image de l'API, sur Postgres : voir
 [Docker, cas par cas](#docker-cas-par-cas), « Lancer les tests dans Docker ».
+
+### Le projet FastAPI
+
+Ses commandes se lancent depuis `fastapi/`, avec le même venv :
+
+```bash
+cd fastapi
+source ../.venv/bin/activate
+pip install -r requirements.txt
+fastapi dev main.py                         # http://127.0.0.1:8000
+pytest -q                                   # 31 tests
+```
+
+Il n'a ni base ni `.env` : les astronautes vivent en mémoire et repartent du
+jeu de démonstration (Neil Armstrong, Alan Bean) à chaque démarrage.
 
 ## Docker, cas par cas
 
@@ -175,7 +202,7 @@ docker compose up -d api                    # recrée le conteneur avec la nouve
 ### Nouvelle migration
 
 La générer depuis `.venv`, pas dans le conteneur : le fichier doit arriver dans
-`migrations/versions/` du dépôt, et le conteneur n'écrit pas sur le poste.
+`flask/migrations/versions/` du dépôt, et le conteneur n'écrit pas sur le poste.
 
 ```bash
 docker compose up -d base
@@ -250,34 +277,47 @@ docker compose down --rmi local             # supprime aussi les images construi
 ## Organisation des fichiers
 
 ```
-annuaire/              le paquet applicatif
-├── __init__.py        creer_app() : la fabrique d'application
-├── config.py          une classe par environnement, choisie par ENVIRONNEMENT
-├── contraintes.py     longueurs et bornes partagées par schemas.py et modeles.py
-├── journal.py         journal JSON, niveau par environnement, id de requête
-├── bdd.py             moteur SQLAlchemy et session liée à la requête
-├── modeles.py         Mission, Astronaute, Utilisateur
-├── schemas.py         validation des corps de requête (Pydantic)
-├── donnees/           accès à la base, un module par agrégat, sans Flask
-├── erreurs.py         les exceptions métier
-├── gestionnaires.py   exception métier → code HTTP
-├── permissions.py     rôles et table des permissions
-├── securite.py        hachage, jetons JWT, décorateurs d'accès
-├── cli.py             flask promouvoir, flask peupler
-└── routes/            un blueprint par ressource, plus sante.py (debogage.py seulement si DEBUG)
-tests/                 conftest.py + un fichier par domaine
-migrations/            révisions Alembic (une migration initiale unique)
-Dockerfile             image de l'API, lancée par Gunicorn
-gunicorn.conf.py       workers, délais, recyclage et journal de Gunicorn
-docker-compose.yaml    services base (Postgres), api, et tests (profil tests) ; rotation des journaux
-docker/initdb/         scripts lancés par Postgres à la création du volume (annuaire_tests)
-.dockerignore          ce qui n'entre pas dans l'image, dont .env
-DEPLOIEMENT.md         mise en production avec Docker, liste de vérification
-traduction.md          Flask → FastAPI, concept par concept, et note de décision
-CLAUDE.md              règles du projet pour Claude Code
-.claude/skills/        skill validate-projet-annuaire
-annuaire.http          requêtes prêtes à jouer (extension REST Client)
-pytest.ini             met la racine sur sys.path pour que `pytest` trouve `annuaire`
+flask/                     le projet Flask ; les commandes se lancent d'ici
+├── annuaire/              le paquet applicatif
+│   ├── __init__.py        creer_app() : la fabrique d'application
+│   ├── config.py          une classe par environnement, choisie par ENVIRONNEMENT
+│   ├── contraintes.py     longueurs et bornes partagées par schemas.py et modeles.py
+│   ├── journal.py         journal JSON, niveau par environnement, id de requête
+│   ├── bdd.py             moteur SQLAlchemy et session liée à la requête
+│   ├── modeles.py         Mission, Astronaute, Utilisateur
+│   ├── schemas.py         validation des corps de requête (Pydantic)
+│   ├── donnees/           accès à la base, un module par agrégat, sans Flask
+│   ├── erreurs.py         les exceptions métier
+│   ├── gestionnaires.py   exception métier → code HTTP
+│   ├── permissions.py     rôles et table des permissions
+│   ├── securite.py        hachage, jetons JWT, décorateurs d'accès
+│   ├── cli.py             flask promouvoir, flask peupler
+│   └── routes/            un blueprint par ressource, plus sante.py (debogage.py seulement si DEBUG)
+├── tests/                 conftest.py + un fichier par domaine
+├── migrations/            révisions Alembic (une migration initiale unique)
+├── Dockerfile             image de l'API, lancée par Gunicorn
+├── gunicorn.conf.py       workers, délais, recyclage et journal de Gunicorn
+├── docker-compose.yaml    services base (Postgres), api, et tests (profil tests) ; rotation des journaux
+├── docker/initdb/         scripts lancés par Postgres à la création du volume (annuaire_tests)
+├── .dockerignore          ce qui n'entre pas dans l'image, dont .env
+├── DEPLOIEMENT.md         mise en production avec Docker, liste de vérification
+├── annuaire.http          requêtes prêtes à jouer (extension REST Client)
+└── pytest.ini             met flask/ sur sys.path pour que `pytest` trouve `annuaire`
+fastapi/                   le projet FastAPI ; ses commandes se lancent d'ici
+├── main.py                l'application : routeurs et gestionnaires d'erreurs
+├── annuaire/
+│   ├── contraintes.py     longueurs et rôles admis
+│   ├── schemas.py         entrée, PATCH et sortie (Pydantic)
+│   ├── donnees/           demonstration.py : les astronautes en mémoire et le compteur d'id
+│   ├── erreurs.py         les exceptions métier
+│   ├── gestionnaires.py   exception métier → code HTTP
+│   └── routes/            un APIRouter par ressource : astronautes.py, sante.py
+├── tests/                 conftest.py + un fichier par domaine
+├── requirements.txt
+└── pytest.ini             met fastapi/ sur sys.path pour que `pytest` trouve `annuaire`
+traduction.md              Flask → FastAPI, concept par concept, et note de décision
+CLAUDE.md                  règles du projet pour Claude Code
+.claude/skills/            skill validate-projet-annuaire
 ```
 
 ## Rôles et permissions

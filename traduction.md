@@ -26,22 +26,22 @@
 
 ## 2 — Routage et réponses
 
-*À remplir en session 23.*
+*Rempli en session 23.*
 
 | Concept | En Flask | En FastAPI | Pourquoi c'est différent | État |
 |---|---|---|---|---|
-| Déclarer une route | | | | |
-| Grouper des routes | | | | |
-| Paramètre d'URL typé | | | | |
-| Paramètre de query string | | | | |
-| Accéder à l'objet requête | | | | |
-| Renvoyer du JSON | | | | |
-| Choisir le code de statut | | | | |
-| Ajouter un en-tête de réponse | | | | |
-| Lever une erreur HTTP | | | | |
-| Gestionnaire d'erreur centralisé | | | | |
-| Créer l'application | | | | |
-| Lancer le serveur de développement | | | | |
+| Déclarer une route | `@bp.get("/astronautes/<int(min=1):id_astronaute>")` sur un Blueprint ; la fonction lit elle-même ce dont elle a besoin (`request.args`, `lire_corps`). | `@router.get("/api/astronautes/{id_astronaute}", response_model=AstronauteSortie)` ; la signature déclare les entrées : `def lire_astronaute(id_astronaute: int)`. | En Flask, le décorateur ne donne que le chemin et la méthode. En FastAPI, la route porte son contrat : la signature décrit ce qui entre, le décorateur ce qui sort (`response_model`, `status_code`). FastAPI lit les annotations pour valider avant d'appeler la fonction. | ✅ |
+| Grouper des routes | `Blueprint("astronautes", __name__, url_prefix=PREFIXE_API)`, enregistré par `app.register_blueprint` dans `creer_app`. | `router = APIRouter()` dans chaque module de `routes/`, ajouté par `app.include_router(astronautes.router)` dans `main.py`. | Même idée : un module par ressource, branché sur l'application. Le Blueprint a un nom, qui sert à `url_for("astronautes.lire")` ; l'APIRouter n'est qu'une liste de routes recopiées dans l'application. Ici le préfixe `/api` est écrit dans chaque chemin, alors que Flask le met une fois dans `url_prefix`. | ✅ |
+| Paramètre d'URL typé | Convertisseur dans le chemin : `<int(min=1):id_astronaute>`. Une valeur qui ne convient pas ne correspond à aucune route : **404**. | Accolades dans le chemin, type dans la signature : `{id_astronaute}` et `id_astronaute: int`. `/api/astronautes/armstrong` donne **422**. | Flask choisit la route avec le convertisseur : une valeur invalide, c'est une route qui n'existe pas. FastAPI trouve la route d'abord, puis valide le paramètre avec Pydantic : c'est une donnée invalide, donc une erreur de validation. | ✅ |
+| Paramètre de query string | `request.args.get("role")` : toujours une chaîne ou `None`, la conversion et le contrôle sont à faire à la main. | Un paramètre de la signature absent du chemin : `role: Role \| None = None`. `?role=cosmonaute` donne **422**. | FastAPI déduit l'origine du paramètre de sa place : dans le chemin, c'est un paramètre d'URL ; sinon, c'est la query string. Le type annoncé est vérifié, et la valeur par défaut le rend facultatif. | ✅ |
+| Accéder à l'objet requête | Le global `request`, importé de `flask` : un proxy vers la requête en cours (contexte de requête). | Un paramètre typé `request: Request`, que FastAPI fournit : c'est ce que reçoit `gerer_astronaute_introuvable`. | Flask range la requête dans un contexte attaché au thread qui la traite. FastAPI la passe explicitement à qui la demande : rien de caché, et rien qui dépende du thread, ce qui convient aux coroutines. | ✅ |
+| Renvoyer du JSON | Renvoyer un dict ou une liste : Flask le convertit en JSON. Le filtrage se fait à la main, avec `en_dict()`. | Renvoyer un dict : FastAPI le valide contre `response_model`, puis le sérialise. `note_interne` disparaît de la réponse sans code supplémentaire. | En Flask, ce que la fonction renvoie part tel quel. En FastAPI, `response_model` est un contrat de sortie : un champ qu'il ne déclare pas est retiré, et un champ obligatoire manquant fait échouer la réponse (500) au lieu de partir incomplet. | ✅ |
+| Choisir le code de statut | Deuxième élément du tuple renvoyé : `return astronaute.en_dict(), 201, {...}`. | Dans le décorateur : `@router.post(..., status_code=201)`, `@router.delete(..., status_code=204)`. | En FastAPI, le code d'une route qui réussit est fixé à sa déclaration, au même endroit que le reste de son contrat. Flask le décide au moment du `return`, ce qui le rend plus libre mais moins visible. | ✅ |
+| Ajouter un en-tête de réponse | Troisième élément du tuple : `{"Location": url_for("astronautes.lire", id_astronaute=...)}`. | Demander `response: Response` dans la signature, puis `response.headers["Location"] = f"/api/astronautes/{prochain_id}"`. | En FastAPI, la valeur renvoyée n'est que le corps : pour toucher aux en-têtes, il faut demander l'objet réponse, que FastAPI fusionne ensuite avec le corps sérialisé. C'est le même mécanisme d'injection par le type que pour `Request`. | ✅ |
+| Lever une erreur HTTP |  |  |  |  |
+| Gestionnaire d'erreur centralisé | `@app.errorhandler(AstronauteIntrouvable)` dans `enregistrer_gestionnaires(app)` ; la fonction reçoit l'exception et renvoie `({"erreur": ...}, 404)`. | `@app.exception_handler(AstronauteIntrouvable)` dans `enregistrer_gestionnaires(app)` ; la fonction reçoit `(request, erreur)` et renvoie `JSONResponse(status_code=404, content={"erreur": ...})`. | Même organisation : la route lève une exception métier, un gestionnaire la traduit en HTTP. Le gestionnaire FastAPI construit lui-même la réponse (pas de tuple converti), et reçoit la requête en paramètre au lieu de la lire dans un global. | ✅ |
+| Créer l'application | Une fabrique : `creer_app(config, **surcharges)` crée `Flask(__name__)`, lit la configuration, enregistre blueprints et gestionnaires. | Une instance au niveau du module, dans `main.py` : `app = FastAPI(title="Annuaire des astronautes", version="0.1.0")`, puis `include_router` et `enregistrer_gestionnaires(app)`. | La fabrique Flask existe pour choisir la configuration à la création (environnement, base des tests). Le projet FastAPI n'a encore ni configuration ni base : une instance de module suffit, et les tests remettent les données à zéro par une fixture plutôt que de créer une application neuve. | ✅ |
+| Lancer le serveur de développement | `flask run --debug`, avec `FLASK_APP="annuaire:creer_app"` dans `.env` ; serveur de développement de Werkzeug. | `fastapi dev main.py`, qui trouve `app` dans `main.py` ; port 8000. | `fastapi dev` lance Uvicorn, le serveur ASGI, avec rechargement automatique : c'est le même serveur qu'en production, alors que celui de Flask n'est fait que pour le développement. | ✅ |
 
 ---
 

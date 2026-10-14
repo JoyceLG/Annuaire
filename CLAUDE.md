@@ -12,11 +12,19 @@ sera.
 
 ## Commandes
 
-L'environnement virtuel est dans le projet : `.venv` (non versionné). Pour le
-recréer : `python3 -m venv .venv`, puis les deux `pip install` ci-dessous.
+Le projet Flask vit dans `flask/` ; `fastapi/` est réservé au projet FastAPI,
+et `traduction.md` est à la racine. **Toutes les commandes Flask se lancent
+depuis `flask/`** (`docker-compose.yaml`, `alembic.ini`, `pytest.ini` et `.env`
+y sont). Les chemins cités plus bas (`annuaire/`, `tests/`, `migrations/`…)
+sont relatifs à `flask/`.
+
+L'environnement virtuel est à la racine du dépôt : `.venv` (non versionné).
+Pour le recréer : `python3 -m venv .venv` à la racine, puis les deux
+`pip install` ci-dessous.
 
 ```bash
-source .venv/bin/activate
+cd flask
+source ../.venv/bin/activate
 pip install -r requirements.txt
 pip install ruff                           # outil de relecture, hors requirements
 
@@ -32,7 +40,7 @@ flask promouvoir <email> admin             # seul moyen de créer un admin
 alembic revision --autogenerate -m "..."   # après modification de modeles.py
 ```
 
-`.env` (non versionné) fournit `CLE_SECRETE_JWT`, `URL_BASE_DE_DONNEES`,
+`flask/.env` (non versionné) fournit `CLE_SECRETE_JWT`, `URL_BASE_DE_DONNEES`,
 `FLASK_APP` et `ENVIRONNEMENT` en local, plus `MOT_DE_PASSE_BASE` (Postgres de
 docker-compose) et `URL_BASE_TESTS` (base vidée par les tests, nom en
 `_tests`) ; `.env.exemple` en est le modèle. Ces deux dernières ne sont pas des

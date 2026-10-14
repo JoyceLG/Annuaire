@@ -1,3 +1,8 @@
+# Sans nom explicite, Compose prend celui du dossier (flask) : volume, conteneurs
+# et images changeraient de nom, et un `up` repartirait d'une base vide à côté
+# de l'ancien volume annuaire_donnees_postgres.
+name: annuaire
+
 # Sans limite, Docker garde toute la sortie d'un conteneur, jusqu'à remplir le
 # disque. Il la fait tourner lui-même : un seul acteur, là où chaque worker
 # Gunicorn ferait tourner son propre fichier (FICHIER_LOG) sans les autres.
