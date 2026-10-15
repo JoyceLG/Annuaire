@@ -10,6 +10,12 @@ from annuaire.contraintes import (
     RoleAstronaute,
     verifier_qualification,
 )
+from annuaire.documentation import (
+    REPONSE_400,
+    REPONSE_404_ASTRONAUTE,
+    REPONSE_422,
+    REPONSE_422_AVEC_COHERENCE,
+)
 from annuaire.donnees.demonstration import ASTRONAUTES, demande_prochain_id_astronaute
 from annuaire.erreurs import AstronauteIntrouvable
 from annuaire.schemas.astronautes import (
@@ -18,25 +24,48 @@ from annuaire.schemas.astronautes import (
     AstronauteSortie,
 )
 
-router = APIRouter()
+router = APIRouter(tags=["Astronautes"], prefix="/api/astronautes")
+
+IdAstronaute = Annotated[int, Path(ge=1, description="Identifiant de l'astronaute")]
 
 
-@router.get("/api/astronautes", response_model=list[AstronauteSortie])
+@router.get(
+    "",
+    response_model=list[AstronauteSortie],
+    summary="Lister les astronautes",
+)
 def lister_astronautes(
-    role: Annotated[RoleAstronaute | None, Query(description="Filtrer par rôle")] = None,
-    limite: Annotated[int, Query(ge=LIMITE_FILTRE_MIN, le=LIMITE_FILTRE_MAX, description="Nombre maximum de résultats")] = 20,
+    role: Annotated[
+        RoleAstronaute | None, Query(description="Filtrer par rôle")
+    ] = None,
+    limite: Annotated[
+        int,
+        Query(
+            ge=LIMITE_FILTRE_MIN,
+            le=LIMITE_FILTRE_MAX,
+            description="Nombre maximum de résultats",
+        ),
+    ] = 20,
 ):
+    """Renvoie la liste des astronautes, éventuellement filtrée par rôle."""
+
     resultats = list(ASTRONAUTES.values())
     if role:
         resultats = [a for a in resultats if a["role"] == role]
     return resultats[:limite]
 
-@router.get("/api/astronautes/{id_astronaute}", response_model=AstronauteSortie)
-def lire_astronaute(
-    id_astronaute: Annotated[
-        int, Path(ge=1, description="Identifiant de l'astronaute")
-    ],
-):
+
+@router.get(
+    "/{id_astronaute}",
+    response_model=AstronauteSortie,
+    summary="Consulter un astronaute",
+    responses={**REPONSE_404_ASTRONAUTE},
+)
+def lire_astronaute(id_astronaute: IdAstronaute):
+    """Renvoie les informations d'un astronaute donné, identifié par son identifiant.
+
+    Les initiales sont calculées par le serveur à partir du nom.
+    """
 
     astronaute = ASTRONAUTES.get(id_astronaute)
     if astronaute is None:
@@ -44,8 +73,13 @@ def lire_astronaute(
     return astronaute
 
 
-@router.post("/api/astronautes", response_model=AstronauteSortie, status_code=201)
+@router.post("",
+    response_model=AstronauteSortie,
+    summary="Créer un astronaute",
+    responses={**REPONSE_400, **REPONSE_422},
+    status_code=201)
 def creer_astronaute(entree: AstronauteEntree, response: Response):
+    """Ajoute un astronaute et renvoie son en-tête Location."""
 
     prochain_id = demande_prochain_id_astronaute()
 
@@ -56,10 +90,12 @@ def creer_astronaute(entree: AstronauteEntree, response: Response):
     return astronaute
 
 
-@router.put(
-    "/api/astronautes/{id_astronaute}", response_model=AstronauteSortie, status_code=200
-)
-def remplacer_astronaute(entree: AstronauteEntree, id_astronaute: int):
+@router.put("/{id_astronaute}",
+    response_model=AstronauteSortie,
+    summary="Remplacer un astronaute",
+    responses={**REPONSE_400, **REPONSE_404_ASTRONAUTE, **REPONSE_422},
+    status_code=200)
+def remplacer_astronaute(entree: AstronauteEntree, id_astronaute: IdAstronaute):
     """Remplace les informations d'un astronaute donné : tous les champs requis."""
 
     astronaute = ASTRONAUTES.get(id_astronaute)
@@ -70,11 +106,13 @@ def remplacer_astronaute(entree: AstronauteEntree, id_astronaute: int):
     return astronaute
 
 
-@router.patch(
-    "/api/astronautes/{id_astronaute}", response_model=AstronauteSortie, status_code=200
-)
-def modifier_astronaute(entree: AstronautePatch, id_astronaute: int):
-    """Modifie partiellement les informations d'un astronaute donné."""
+@router.patch("/{id_astronaute}",
+    response_model=AstronauteSortie,
+    summary="Modifier un astronaute",
+    responses={**REPONSE_400, **REPONSE_404_ASTRONAUTE, **REPONSE_422_AVEC_COHERENCE},
+    status_code=200)
+def modifier_astronaute(entree: AstronautePatch, id_astronaute: IdAstronaute):
+    """Modifie partiellement les informations d'un astronaute donné : au moins un champ requis."""
 
     astronaute = ASTRONAUTES.get(id_astronaute)
     if astronaute is None:
@@ -89,9 +127,12 @@ def modifier_astronaute(entree: AstronautePatch, id_astronaute: int):
     return astronaute
 
 
-@router.delete("/api/astronautes/{id_astronaute}", status_code=204)
-def supprimer(id_astronaute: int):
-    """Supprime un astronaute de la liste ."""
+@router.delete("/{id_astronaute}",
+    summary="Supprimer un astronaute",
+    responses={**REPONSE_404_ASTRONAUTE},
+    status_code=204)
+def supprimer(id_astronaute: IdAstronaute):
+    """Supprime un astronaute donné."""
 
     astronaute = ASTRONAUTES.get(id_astronaute)
     if astronaute is None:

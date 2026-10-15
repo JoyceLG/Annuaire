@@ -5,7 +5,7 @@ d'annuaire (missions, astronautes, utilisateurs) qui grandit d'une session à
 l'autre. Le programme des sessions est dans `../../programme-formation-fastapi-flask*.md`.
 
 C'est un projet d'apprentissage : on explique ce qu'on change, on ne
-réécrit pas le travail de l'autrice sans le lui avoir montré, et **on ne fait
+réécrit pas le travail de l'auteur sans le lui avoir montré, et **on ne fait
 aucune référence aux sessions suivantes** (ni dans le code, ni dans la doc, ni
 dans les commits). Chaque session décrit le projet tel qu'il est, pas tel qu'il
 sera.
@@ -116,7 +116,7 @@ Le code ne connaît aucune technologie de base : elle vient tout entière de
 - Une session en cours vit sur une branche `sessionNN`. Une fois commitée, la
   branche est poussée pour vérification ; elle n'est fusionnée dans `main` en
   avance rapide (`--ff-only`), puis supprimée en local et sur GitHub, qu'après
-  le feu vert explicite de l'autrice.
+  le feu vert explicite de l'auteur.
 - Le README décrit l'état de la session qui vient d'être commitée (format :
   voir le skill `validate-projet-annuaire`).
 - Valider une session : `/validate-projet-annuaire`.

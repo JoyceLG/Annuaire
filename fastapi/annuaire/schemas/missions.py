@@ -11,6 +11,7 @@ from pydantic import (
     computed_field,
     model_validator,
 )
+from pydantic.json_schema import SkipJsonSchema
 
 from annuaire.contraintes import ANNEE_MINIMALE, LONGUEUR_NOM_MISSION
 from annuaire.schemas.commun import nettoyer
@@ -28,9 +29,13 @@ class MissionEntree(BaseModel):
     annee: Annee
 
 class MissionPatch(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-    nom: Nom | None = None
-    annee: Annee | None = None
+    # minProperties : voir AstronautePatch.
+    model_config = ConfigDict(
+        extra="forbid", strict=True, json_schema_extra={"minProperties": 1}
+    )
+    # Absent, pas null : voir AstronautePatch.
+    nom: Nom | SkipJsonSchema[None] = None
+    annee: Annee | SkipJsonSchema[None] = None
 
     @model_validator(mode="after")
     def _au_moins_un_champ_non_null(self):

@@ -1,13 +1,13 @@
 ---
 name: validate-projet-annuaire
-description: Valide une session de la formation sur le projet Annuaire — relit le code de la session, lance les tests, fait des retours avant toute correction, met le README à jour, crée le commit unique de la session sur sa branche, puis la fusionne dans main seulement après vérification et feu vert de l'autrice. À utiliser quand l'autrice demande de valider, clôturer, commiter ou fusionner sa session.
+description: Valide une session de la formation sur le projet Annuaire — relit le code de la session, lance les tests, fait des retours avant toute correction, met le README à jour, crée le commit unique de la session sur sa branche, puis la fusionne dans main seulement après vérification et feu vert de l'auteur. À utiliser quand l'auteur demande de valider, clôturer, commiter ou fusionner sa session.
 ---
 
 # Valider une session du projet Annuaire
 
 Dérouler les étapes dans l'ordre. Deux points d'arrêt obligatoires : après la
 revue (étape 4) et après le commit, sur la branche de session (étape 7).
-**Ne jamais fusionner dans `main` sans le feu vert explicite de l'autrice.**
+**Ne jamais fusionner dans `main` sans le feu vert explicite de l'auteur.**
 Tout est rédigé en français.
 
 Rappel des règles du projet : voir `CLAUDE.md`. En particulier, **aucune
@@ -108,7 +108,7 @@ cd flask
 
 ## 4. Rendre les retours — point d'arrêt
 
-Présenter à l'autrice, avant de toucher au code :
+Présenter à l'auteur, avant de toucher au code :
 
 - le résultat des tests et des migrations ;
 - les défauts trouvés, du plus grave au moins grave, chacun avec le fichier et
@@ -116,7 +116,7 @@ Présenter à l'autrice, avant de toucher au code :
   correction proposée ;
 - éventuellement, quelques remarques mineures, clairement séparées.
 
-Puis **s'arrêter et attendre sa réponse**. Ne corriger que ce qu'elle
+Puis **s'arrêter et attendre sa réponse**. Ne corriger que ce qu'il
 valide. Après correction, relancer l'étape 3 sur ce qui a changé ; pour un
 test corrigé, vérifier qu'il échoue bien quand on casse le code.
 
@@ -183,7 +183,7 @@ Session N — titre
 
 ## 7. Rester sur la branche de session — point d'arrêt
 
-Ne pas fusionner. L'autrice vérifie la branche `sessionNN` avant toute fusion
+Ne pas fusionner. L'auteur vérifie la branche `sessionNN` avant toute fusion
 dans `main`.
 
 Demander confirmation avant de publier la branche, puis :
@@ -195,12 +195,12 @@ git status -sb                         # doit afficher sessionNN...origin/sessio
 ```
 
 Donner le hash et le titre du commit, puis **s'arrêter et attendre** le feu
-vert explicite pour fusionner. Si l'autrice demande des retouches, amender le
+vert explicite pour fusionner. Si l'auteur demande des retouches, amender le
 commit de la session (un seul commit par session) et repousser la branche.
 
 ## 8. Fusionner et pousser main — après feu vert
 
-Seulement quand l'autrice a dit de fusionner :
+Seulement quand l'auteur a dit de fusionner :
 
 ```bash
 git fetch
@@ -219,5 +219,5 @@ jamais faire de merge commit ni de rebase de `main`.
 ## 9. Bilan
 
 En quelques lignes : le commit (hash et titre), le nombre de tests, ce qui a été
-corrigé à la demande de l'autrice, ce qui a été signalé mais laissé tel quel,
+corrigé à la demande de l'auteur, ce qui a été signalé mais laissé tel quel,
 et l'état de GitHub (branche de session poussée, `main` fusionné ou non).

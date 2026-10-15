@@ -195,6 +195,26 @@ def test_creation_avec_type_de_qualification_inconnu(client):
     assert reponse.status_code == 422
 
 
+# Qualification mal typée ou avec un champ inconnu : 422, rien n'est créé.
+# Le mode strict d'AstronauteEntree ne s'étend pas aux modèles qu'il contient :
+# sans leur propre configuration, `false` devenait 0 heure de vol.
+@pytest.mark.parametrize(
+    "qualification",
+    [
+        {**QUALIFICATION_PILOTE, "heures_vol": False},
+        {**QUALIFICATION_PILOTE, "heures_vol": "1500"},
+        {**QUALIFICATION_PILOTE, "salaire": 10000},
+    ],
+)
+def test_creation_avec_qualification_mal_formee(client, qualification):
+    reponse = client.post(
+        "/api/astronautes",
+        json={**EDGAR_MITCHELL, "qualification": qualification},
+    )
+    assert reponse.status_code == 422
+    assert len(client.get("/api/astronautes").json()) == 3
+
+
 # Champ inconnu : 422
 def test_creation_avec_champ_inconnu(client):
     reponse = client.post(

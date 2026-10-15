@@ -10,9 +10,9 @@ import copy
 import pytest
 from fastapi.testclient import TestClient
 
+from annuaire import creer_app
 from annuaire.donnees import demonstration
 from annuaire.donnees.demonstration import ASTRONAUTES, MISSIONS
-from main import app
 
 
 @pytest.fixture(autouse=True)
@@ -57,4 +57,4 @@ def missions_neuves():
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    return TestClient(creer_app("test"))

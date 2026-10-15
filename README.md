@@ -1,53 +1,49 @@
-# Annuaire des astronautes — Session 24 : pydantic, la validation automatique
+# Annuaire des astronautes — Session 25 : la documentation générée automatiquement
 
 API REST sur Postgres ou SQLite, au choix, avec authentification JWT, rôles,
 migrations Alembic et tests pytest, servie par Gunicorn dans deux conteneurs
-Docker. Cette session étend le projet FastAPI aux missions, et confie à
-Pydantic toute la validation : contraintes, union discriminée, règles qui
-croisent plusieurs champs.
+Docker. Cette session documente le projet FastAPI : schéma OpenAPI, Swagger UI
+et ReDoc, tenus pour vrais par des tests, et fermés en production.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- **Les missions en FastAPI** : liste filtrable par année (missions de cette
-  année ou plus récentes), lecture, création, PUT, PATCH et DELETE, en mémoire
-  comme les astronautes, avec la même validation stricte.
-- **Les schémas rangés par ressource** : `schemas/` remplace `schemas.py`, avec
-  `astronautes.py`, `missions.py` et `commun.py` (la fonction `nettoyer`
-  partagée).
-- **Une qualification par astronaute, en union discriminée** : pilote,
-  scientifique ou ingénieur, chacune avec ses propres champs. Le champ `type`
-  choisit le modèle à appliquer, et un type inconnu donne 422. La
-  qualification est enregistrée mais ne sort pas de l'API : `AstronauteSortie`
-  ne la déclare pas.
-- **Une qualification cohérente avec le rôle.** `QUALIFICATIONS_PAR_ROLE`
-  (`contraintes.py`) donne les types admis pour chaque rôle, et
-  `verifier_qualification` applique la règle. À la création et au PUT, un
-  `model_validator` l'appelle. En PATCH, le schéma ne voit que le corps
-  envoyé : la route vérifie donc l'astronaute tel qu'il serait après
-  modification, et `QualificationIncoherente` est traduite en 422
-  `{"erreur": ...}`.
-- **Des champs calculés en sortie** avec `@computed_field` : `initiales` pour
-  les astronautes, `programme` pour les missions. Rien n'est stocké, donc rien
-  ne peut diverger du nom.
-- **Des paramètres contraints et décrits** : `limite` (1 à 100) sur les deux
-  listes, `annee` bornée par `ANNEE_MINIMALE`, identifiant de lecture
-  `Path(ge=1)`, chacun avec sa `description`.
-- **Des types contraints réutilisables** : `Nom`, `Nationalite` et `Annee`
-  sont des types `Annotated`, partagés par l'entrée et le PATCH. Un
-  `BeforeValidator(nettoyer)` retire les espaces autour de la valeur avant le
-  contrôle de longueur, si bien qu'un nom fait d'espaces est refusé par
-  `min_length`.
-- **Un compteur d'identifiants par ressource**, qui part du plus grand
-  identifiant du jeu de démonstration.
-- **77 tests FastAPI**, dont un fichier `test_missions.py` et des tests
-  paramétrés pour chaque combinaison rôle / qualification. Une seconde
-  fixture remet les missions et leur compteur à leur état initial.
-- **`traduction.md`** : section « Validation et sérialisation » remplie, ainsi
-  que les pièges rencontrés, les réflexes Flask à désapprendre et un premier
-  point où Flask fait mieux.
+- **Une fabrique d'application** : `creer_app()` dans `annuaire/__init__.py`
+  remplace `main.py`, et se lance par `uvicorn --factory annuaire:creer_app`.
+  Les tests construisent chacun leur application, comme côté Flask.
+- **Une classe par environnement** (`annuaire/config.py`), choisie par
+  `ENVIRONNEMENT` (`developpement` par défaut, `test`, `production`). Un nom
+  inconnu empêche le démarrage, plutôt que de lancer la production avec les
+  réglages de développement.
+- **La documentation fermée en production** : `/docs`, `/redoc` et
+  `/openapi.json` répondent 404 quand `DOCUMENTATION_PUBLIQUE` est faux. Les
+  routes de l'API, elles, répondent toujours.
+- **Un schéma OpenAPI décrit** : titre, description, version et groupes
+  (`openapi_tags`) ; chaque `APIRouter` porte son étiquette et son préfixe ;
+  chaque route un `summary=`, et sa docstring pour description.
+- **Des champs décrits avec des exemples** : `Field(description=...,
+  examples=...)` sur les types `Nom`, `Nationalite`, `Role` et `Qualification`,
+  `Path(description=...)` sur les identifiants.
+- **Les réponses d'erreur documentées** : `annuaire/documentation.py` regroupe
+  les fragments `responses=` (400, 404, 422), chacun avec le modèle de son
+  corps d'erreur et un exemple. Le PATCH d'un astronaute déclare ses deux
+  formats de 422.
+- **Des PATCH décrits comme ils sont validés** : `minProperties: 1` publie le
+  refus du corps vide, et `SkipJsonSchema[None]` retire `null` des valeurs
+  annoncées.
+- **Des qualifications strictes** : chaque modèle de qualification a son propre
+  `extra="forbid", strict=True`, que le modèle parent ne lui transmet pas
+  (`false` devenait 0 heure de vol).
+- **La route de santé** déplacée dans `routes/technique.py`, sur
+  `/api/technique/sante`.
+- **108 tests FastAPI**, dont `test_documentation.py` : ce que la
+  documentation annonce (exemples de champs, exemples d'erreur 400, 404 et
+  422, absence de 404 sur les listes et de 409 à la création) est confronté
+  aux vraies réponses de l'application.
+- **`traduction.md`** : section « Documentation » remplie, avec une ligne
+  sur l'exposition de la documentation en production.
 
 ## Lancer
 
@@ -125,13 +121,15 @@ Ses commandes se lancent depuis `fastapi/`, avec le même venv :
 cd fastapi
 source ../.venv/bin/activate
 pip install -r requirements.txt
-fastapi dev main.py                         # http://127.0.0.1:8000
-pytest -q                                   # 77 tests
+uvicorn --factory annuaire:creer_app --reload   # http://127.0.0.1:8000/docs
+pytest -q                                   # 108 tests
 ```
 
 Il n'a ni base ni `.env` : astronautes et missions vivent en mémoire et
 repartent du jeu de démonstration (Neil Armstrong, Alan Bean, Sophie Adenot ;
-Apollo 11, 12 et 13) à chaque démarrage.
+Apollo 11, 12 et 13) à chaque démarrage. Sans `ENVIRONNEMENT`, c'est le
+développement : la documentation est ouverte. En production,
+`ENVIRONNEMENT=production` la ferme.
 
 ## Docker, cas par cas
 
@@ -321,14 +319,16 @@ flask/                     le projet Flask ; les commandes se lancent d'ici
 ├── annuaire.http          requêtes prêtes à jouer (extension REST Client)
 └── pytest.ini             met flask/ sur sys.path pour que `pytest` trouve `annuaire`
 fastapi/                   le projet FastAPI ; ses commandes se lancent d'ici
-├── main.py                l'application : routeurs et gestionnaires d'erreurs
 ├── annuaire/
+│   ├── __init__.py        creer_app() : la fabrique, routeurs, gestionnaires et métadonnées OpenAPI
+│   ├── config.py          une classe par environnement, choisie par ENVIRONNEMENT
+│   ├── documentation.py   fragments responses= réutilisables : modèles et exemples d'erreur
 │   ├── contraintes.py     longueurs, bornes, rôles et qualifications admises par rôle
 │   ├── schemas/           entrée, PATCH et sortie (Pydantic) : astronautes.py, missions.py, commun.py
 │   ├── donnees/           demonstration.py : astronautes et missions en mémoire, un compteur d'id chacun
 │   ├── erreurs.py         les exceptions métier
 │   ├── gestionnaires.py   exception métier → code HTTP
-│   └── routes/            un APIRouter par ressource : astronautes.py, missions.py, sante.py
+│   └── routes/            un APIRouter par ressource : astronautes.py, missions.py, technique.py (santé)
 ├── tests/                 conftest.py + un fichier par domaine
 ├── requirements.txt
 └── pytest.ini             met fastapi/ sur sys.path pour que `pytest` trouve `annuaire`

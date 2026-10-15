@@ -11,6 +11,7 @@ from pydantic import (
     computed_field,
     model_validator,
 )
+from pydantic.json_schema import SkipJsonSchema
 
 from annuaire.contraintes import (
     LONGUEUR_NATIONALITE,
@@ -22,18 +23,24 @@ from annuaire.schemas.commun import nettoyer
 
 
 class QualificationPilote(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
     type: Literal["pilote"]
     heures_vol: int = Field(ge=0)
     appareil: str
 
 
 class QualificationScientifique(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
     type: Literal["scientifique"]
     discipline: str
     doctorat: bool
 
 
 class QualificationIngenieur(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
     type: Literal["ingenieur"]
     specialite: str
     experience: int = Field(ge=0)
@@ -41,26 +48,36 @@ class QualificationIngenieur(BaseModel):
 
 Qualification = Annotated[
     QualificationPilote | QualificationScientifique | QualificationIngenieur,
-    Field(discriminator="type"),
+    Field(discriminator="type", description="Type de qualification de l'astronaute", examples=[
+        {"type": "pilote", "heures_vol": 1500, "appareil": "F-16"}
+    ]),
 ]
+
 Nom = Annotated[
     str,
     BeforeValidator(nettoyer),
     StringConstraints(min_length=1, max_length=LONGUEUR_NOM),
+    Field(description="Nom complet de l'astronaute", examples=["Sophie Adenot"]),
 ]
+
 Nationalite = Annotated[
     str,
     BeforeValidator(nettoyer),
     StringConstraints(min_length=1, max_length=LONGUEUR_NATIONALITE),
+    Field(description="Nationalité de l'astronaute", examples=["Française"]),
 ]
-Role = RoleAstronaute
+
+Role = Annotated[
+    RoleAstronaute,
+    Field(description="Rôle de l'astronaute", examples=["commandant", "pilote", "specialiste"])
+]
 
 
 class AstronauteEntree(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     nom: Nom
-    role: RoleAstronaute
+    role: Role
     nationalite: Nationalite
     qualification: Qualification
 
@@ -73,11 +90,17 @@ class AstronauteEntree(BaseModel):
 
 
 class AstronautePatch(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-    nom: Nom | None = None
-    role: Role | None = None
-    nationalite: Nationalite | None = None
-    qualification: Qualification | None = None
+    # minProperties publie dans le schéma le refus du corps vide, que le
+    # validateur applique : sans lui, `{}` paraît valide à qui lit /docs.
+    model_config = ConfigDict(
+        extra="forbid", strict=True, json_schema_extra={"minProperties": 1}
+    )
+    # SkipJsonSchema retire `null` du schéma publié : un champ peut être
+    # absent, pas envoyé à null (le validateur ci-dessous le refuse).
+    nom: Nom | SkipJsonSchema[None] = None
+    role: Role | SkipJsonSchema[None] = None
+    nationalite: Nationalite | SkipJsonSchema[None] = None
+    qualification: Qualification | SkipJsonSchema[None] = None
 
     @model_validator(mode="after")
     def _au_moins_un_champ_non_null(self):
