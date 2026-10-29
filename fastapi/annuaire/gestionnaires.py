@@ -10,6 +10,7 @@ from annuaire.erreurs import (
     AuthentificationRequise,
     LimiteTropGrande,
     MissionIntrouvable,
+    MissionUtilisee,
     QualificationIncoherente,
 )
 
@@ -54,6 +55,17 @@ def enregistrer_gestionnaires(app):
         return JSONResponse(
             status_code=404,
             content={"erreur": f"La mission {erreur.id_mission} n'existe pas"},
+        )
+
+    @app.exception_handler(MissionUtilisee)
+    async def gerer_mission_utilisee(request: Request, erreur: MissionUtilisee):
+        # 409 : la requête est valide, mais contredit l'état de la ressource.
+        return JSONResponse(
+            status_code=409,
+            content={
+                "erreur": f"La mission {erreur.id_mission} a un équipage "
+                "et ne peut pas être supprimée"
+            },
         )
 
     @app.exception_handler(AuthentificationRequise)

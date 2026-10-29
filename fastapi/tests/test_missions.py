@@ -6,10 +6,17 @@ paramètres ne passent pas la validation Pydantic.
 
 import re
 
+import pytest
+
 APOLLO_14 = {"nom": "Apollo 14", "annee": 1971}
 # Ce que l'API renvoie pour APOLLO_14, hors identifiant : les champs envoyés,
 # plus le programme calculé par MissionSortie et l'équipage (vide).
 APOLLO_14_SORTIE = {**APOLLO_14, "programme": "Apollo", "equipage": []}
+
+# L'équipage du jeu de démonstration, tel que l'API le renvoie. Apollo 13
+# n'en a pas : c'est la mission que les tests peuvent supprimer.
+EQUIPAGE_APOLLO_11 = [{"id": 1, "nom": "Neil Armstrong"}, {"id": 2, "nom": "Buzz Aldrin"}]
+EQUIPAGE_APOLLO_12 = [{"id": 3, "nom": "Alan Bean"}]
 
 
 # Liste complète : les trois missions du jeu de démonstration
@@ -19,17 +26,18 @@ def test_liste_renvoie_toutes_les_missions(client):
     assert [m["nom"] for m in reponse.json()] == ["Apollo 11", "Apollo 12", "Apollo 13"]
 
 
-# Lecture d'une mission existante, avec son programme calculé
-def test_lire_mission_existante(client):
-    reponse = client.get("/api/missions/1")
+# Lecture d'une mission existante, avec son programme calculé et son équipage
+@pytest.mark.parametrize(
+    "id_mission, attendu",
+    [
+        (1, {"nom": "Apollo 11", "annee": 1969, "equipage": EQUIPAGE_APOLLO_11}),
+        (2, {"nom": "Apollo 12", "annee": 1969, "equipage": EQUIPAGE_APOLLO_12}),
+    ],
+)
+def test_lire_mission_existante(client, id_mission, attendu):
+    reponse = client.get(f"/api/missions/{id_mission}")
     assert reponse.status_code == 200
-    assert reponse.json() == {
-        "id": 1,
-        "nom": "Apollo 11",
-        "annee": 1969,
-        "programme": "Apollo",
-        "equipage": [],
-    }
+    assert reponse.json() == {"id": id_mission, "programme": "Apollo", **attendu}
 
 
 # Lecture d'une mission inexistante : 404 avec un message d'erreur
@@ -140,12 +148,12 @@ def test_creation_avec_corps_vide(client_authentifie):
     assert reponse.status_code == 422
 
 
-# Modification d'une mission existante
+# Modification d'une mission existante : son équipage ne change pas
 def test_put_remplace_reellement(client_authentifie):
     reponse = client_authentifie.put("/api/missions/1", json=APOLLO_14)
     assert reponse.status_code == 200
     relecture = client_authentifie.get("/api/missions/1")
-    assert relecture.json() == {"id": 1, **APOLLO_14_SORTIE}
+    assert relecture.json() == {"id": 1, **APOLLO_14_SORTIE, "equipage": EQUIPAGE_APOLLO_11}
 
 
 # PUT incomplet : 422, et la mission est intacte
@@ -165,7 +173,13 @@ def test_put_inexistant(client_authentifie):
 def test_patch_ne_touche_que_les_champs_envoyes(client_authentifie):
     reponse = client_authentifie.patch("/api/missions/1", json={"nom": "Gemini 4"})
     assert reponse.status_code == 200
-    attendu = {"id": 1, "nom": "Gemini 4", "annee": 1969, "programme": "Gemini", "equipage": []}
+    attendu = {
+        "id": 1,
+        "nom": "Gemini 4",
+        "annee": 1969,
+        "programme": "Gemini",
+        "equipage": EQUIPAGE_APOLLO_11,
+    }
     assert reponse.json() == attendu
     assert client_authentifie.get("/api/missions/1").json() == attendu
 
@@ -174,7 +188,11 @@ def test_patch_ne_touche_que_les_champs_envoyes(client_authentifie):
 def test_patch_modifie_avec_tous_les_champs(client_authentifie):
     reponse = client_authentifie.patch("/api/missions/1", json=APOLLO_14)
     assert reponse.status_code == 200
-    assert client_authentifie.get("/api/missions/1").json() == {"id": 1, **APOLLO_14_SORTIE}
+    assert client_authentifie.get("/api/missions/1").json() == {
+        "id": 1,
+        **APOLLO_14_SORTIE,
+        "equipage": EQUIPAGE_APOLLO_11,
+    }
 
 
 # PATCH avec une année trop ancienne : 422, et la mission est intacte
@@ -203,12 +221,23 @@ def test_patch_inexistant(client_authentifie):
     assert reponse.status_code == 404
 
 
-# Suppression : 204 sans corps, puis un GET qui renvoie 404
+# Suppression d'une mission sans équipage : 204 sans corps, puis un GET qui renvoie 404
 def test_suppression_mission(client_authentifie):
-    reponse = client_authentifie.delete("/api/missions/1")
+    reponse = client_authentifie.delete("/api/missions/3")
     assert reponse.status_code == 204
     assert reponse.content == b""
-    assert client_authentifie.get("/api/missions/1").status_code == 404
+    assert client_authentifie.get("/api/missions/3").status_code == 404
+
+
+# Suppression d'une mission avec équipage : 409, et ni la mission ni son
+# équipage n'ont disparu
+def test_suppression_refusee_si_equipage(client_authentifie):
+    reponse = client_authentifie.delete("/api/missions/1")
+    assert reponse.status_code == 409
+    assert reponse.json() == {"erreur": "La mission 1 a un équipage et ne peut pas être supprimée"}
+    relecture = client_authentifie.get("/api/missions/1")
+    assert relecture.status_code == 200
+    assert relecture.json()["equipage"] == EQUIPAGE_APOLLO_11
 
 
 # Suppression d'une inexistante : 404
@@ -217,11 +246,13 @@ def test_suppression_inexistante(client_authentifie):
     assert reponse.status_code == 404
 
 
-# Une suppression ne décale pas les identifiants des autres
+# Une suppression ne décale pas les identifiants des autres : Apollo 13, la
+# seule mission sans équipage, est supprimée avant Apollo 14, créée après elle
 def test_suppression_ne_decale_pas_les_identifiants(client_authentifie):
-    client_authentifie.delete("/api/missions/1")
-    reponse = client_authentifie.get("/api/missions/2")
-    assert reponse.json()["nom"] == "Apollo 12"
+    id_cree = client_authentifie.post("/api/missions", json=APOLLO_14).json()["id"]
+    client_authentifie.delete("/api/missions/3")
+    reponse = client_authentifie.get(f"/api/missions/{id_cree}")
+    assert reponse.json()["nom"] == "Apollo 14"
 
 
 # Sans jeton, chaque route d'écriture des missions répond 401. Les routes

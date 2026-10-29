@@ -23,6 +23,13 @@ class MissionIntrouvable(Exception):
         self.id_mission = id_mission
 
 
+class MissionUtilisee(Exception):
+    """Suppression refusée : la mission a encore un équipage."""
+
+    def __init__(self, id_mission: int):
+        self.id_mission = id_mission
+
+
 class AuthentificationRequise(Exception):
     """Route protégée appelée sans jeton valide."""
 

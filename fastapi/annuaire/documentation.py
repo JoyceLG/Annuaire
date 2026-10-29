@@ -41,6 +41,18 @@ def reponse_404(exemple: str) -> dict:
 REPONSE_404_ASTRONAUTE = reponse_404("L'astronaute 42 n'existe pas")
 REPONSE_404_MISSION = reponse_404("La mission 42 n'existe pas")
 
+REPONSE_409_MISSION_UTILISEE = {
+    409: {
+        "model": Erreur,
+        "description": "La mission a un équipage : la supprimer l'effacerait aussi.",
+        "content": {
+            "application/json": {
+                "example": {"erreur": "La mission 42 a un équipage et ne peut pas être supprimée"}
+            }
+        },
+    }
+}
+
 REPONSE_400 = {
     400: {
         "model": ErreurCorpsIllisible,

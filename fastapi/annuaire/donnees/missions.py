@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from annuaire.erreurs import MissionIntrouvable
+from annuaire.erreurs import MissionIntrouvable, MissionUtilisee
 from annuaire.modeles import Mission
 
 
@@ -70,5 +70,13 @@ def modifier(mission: Mission, champs: dict) -> Mission:
 
 
 async def supprimer(bdd: AsyncSession, mission: Mission) -> None:
-    """Marque une mission pour suppression ; effective au commit."""
+    """Marque une mission pour suppression ; effective au commit.
+
+    Refusée (MissionUtilisee) si la mission a un équipage : l'annuaire ne
+    perd pas des membres d'équipage par effet de bord. La règle est ici, et
+    non dans la route, pour protéger tout appelant. `mission.equipage` est
+    déjà chargé par `trouver` (selectinload) : aucune requête implicite.
+    """
+    if mission.equipage:
+        raise MissionUtilisee(mission.id)
     await bdd.delete(mission)

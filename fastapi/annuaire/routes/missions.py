@@ -11,6 +11,7 @@ from annuaire.documentation import (
     REPONSE_400,
     REPONSE_401,
     REPONSE_404_MISSION,
+    REPONSE_409_MISSION_UTILISEE,
     REPONSE_422,
     REPONSE_422_PAGINATION,
 )
@@ -114,11 +115,11 @@ async def modifier_mission(bdd: SessionBdd, entree: MissionPatch, id_mission: Id
 @ecriture.delete(
     "/{id_mission}",
     summary="Supprimer une mission",
-    responses={**REPONSE_404_MISSION},
+    responses={**REPONSE_404_MISSION, **REPONSE_409_MISSION_UTILISEE},
     status_code=204,
 )
 async def supprimer_mission(bdd: SessionBdd, id_mission: IdMission):
-    """Supprime une mission donnée."""
+    """Supprime une mission donnée, sauf si elle a un équipage."""
     mission = await donnees_missions.trouver(bdd, id_mission)
     await donnees_missions.supprimer(bdd, mission)
     await bdd.commit()

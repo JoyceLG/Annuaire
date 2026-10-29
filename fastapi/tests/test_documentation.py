@@ -219,6 +219,17 @@ def test_exemple_404_decrit_la_bonne_ressource(schema, client, chemin_doc, chemi
     assert exemple["erreur"].startswith(debut_reel)
 
 
+# Vérifie que l'exemple documenté pour le 409 de suppression a la forme de la
+# vraie réponse, obtenue en supprimant Apollo 11, qui a un équipage.
+def test_exemple_409_de_suppression_est_la_vraie_reponse(schema, client_authentifie):
+    exemple = exemple_documente(schema["paths"]["/api/missions/{id_mission}"]["delete"], 409)
+
+    reponse = client_authentifie.delete("/api/missions/1")
+
+    assert reponse.status_code == 409
+    assert reponse.json() == {"erreur": exemple["erreur"].replace("42", "1")}
+
+
 # Vérifie qu'une liste ne documente pas de 404 : un filtre sans résultat
 # répond 200 et une liste vide. Sophie Adenot, seule spécialiste du jeu de
 # démonstration, est supprimée d'abord ; aucune mission ne date de 2100.

@@ -107,6 +107,7 @@
 |---|---|---|---|---|
 | Session SQLAlchemy | | | | |
 | Chargement des relations | | | | |
+| Supprimer une ressource qui en a d'autres | `DELETE /missions/<id>` refuse en 409 (`MissionUtilisee`) une mission qui a encore des astronautes : la vue les liste avant de supprimer. | Même choix, refus en 409 (`MissionUtilisee`) d'une mission qui a un équipage. La règle est dans `donnees/missions.supprimer`, qui lit `mission.equipage`, déjà chargé par `trouver` (`selectinload`). Écarté : la cascade, qui effacerait l'équipage d'Apollo 11 sans que le client l'ait demandé, et les orphelins, qui contredisent `mission_id` obligatoire (un membre d'équipage sans mission n'a pas de sens). | Même contrat pour le client dans les deux projets : rien ne disparaît par effet de bord, il supprime d'abord l'équipage s'il le veut vraiment. La règle descend dans la couche données parce que tout appelant doit la respecter, pas seulement la route. En asynchrone, la relation doit être chargée à l'avance : lue sans `selectinload`, elle déclencherait un chargement paresseux impossible (`MissingGreenlet`). Sans la règle, SQLAlchemy choisit tout seul les orphelins : il passe `mission_id` à NULL, et la base refuse (`NOT NULL constraint failed`), donc 500. | ✅ |
 | Exiger une authentification | | | | |
 | Récupérer l'utilisateur courant | | | | |
 | Vérifier une permission | | | | |

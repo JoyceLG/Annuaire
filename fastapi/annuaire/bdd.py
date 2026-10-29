@@ -14,8 +14,11 @@ from fastapi import Depends, FastAPI, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from annuaire.donnees.demonstration import MISSIONS_DEMONSTRATION
-from annuaire.modeles import Base, Mission
+from annuaire.donnees.demonstration import (
+    EQUIPAGE_DEMONSTRATION,
+    MISSIONS_DEMONSTRATION,
+)
+from annuaire.modeles import Base, MembreEquipage, Mission
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +75,9 @@ async def _peupler_si_vide(fabrique: async_sessionmaker[AsyncSession]) -> None:
         if nombre:
             return
         session.add_all(Mission(**valeurs) for valeurs in MISSIONS_DEMONSTRATION)
+        # Ajoutés dans la même session : au commit, l'unité de travail insère
+        # les missions avant l'équipage, qui y fait référence (clé étrangère).
+        session.add_all(MembreEquipage(**valeurs) for valeurs in EQUIPAGE_DEMONSTRATION)
         await session.commit()
 
 
