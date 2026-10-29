@@ -11,7 +11,7 @@ from fastapi import Cookie, Depends, Header, Query, Request
 from pydantic import BaseModel
 
 from annuaire.config import Config
-from annuaire.donnees.demonstration import ASTRONAUTES, MISSIONS
+from annuaire.donnees.demonstration import ASTRONAUTES
 from annuaire.erreurs import AuthentificationRequise, LimiteTropGrande
 
 logger = logging.getLogger(__name__)
@@ -56,19 +56,6 @@ def depot_astronautes():
     logger.debug("ouverture de l'accès aux données")
     try:
         yield ASTRONAUTES
-    finally:
-        logger.debug("fermeture de l'accès aux données")
-
-
-def depot_missions():
-    """Ouvre un accès aux données pour la durée de la requête.
-
-    Le `finally` s'exécute même si la route lève une exception : c'est ce
-    qui garantit qu'aucune ressource ne fuit.
-    """
-    logger.debug("ouverture de l'accès aux données")
-    try:
-        yield MISSIONS
     finally:
         logger.debug("fermeture de l'accès aux données")
 
@@ -141,6 +128,3 @@ PaginationInjectee = Annotated[Pagination, Depends(pagination)]
 
 # Forme réutilisable : on écrit `depot_astronautes: DepotAstronautesInjecte` dans les routes.
 DepotAstronautesInjecte = Annotated[dict, Depends(depot_astronautes)]
-
-# Forme réutilisable : on écrit `depot_missions: DepotMissionsInjecte` dans les routes.
-DepotMissionsInjecte = Annotated[dict, Depends(depot_missions)]

@@ -4,12 +4,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, Response
 
+from annuaire.bdd import SessionBdd
 from annuaire.contraintes import ANNEE_MINIMALE
-from annuaire.dependances import (
-    DepotMissionsInjecte,
-    PaginationInjectee,
-    authentification_requise,
-)
+from annuaire.dependances import PaginationInjectee, authentification_requise
 from annuaire.documentation import (
     REPONSE_400,
     REPONSE_401,
@@ -17,8 +14,7 @@ from annuaire.documentation import (
     REPONSE_422,
     REPONSE_422_PAGINATION,
 )
-from annuaire.donnees.demonstration import demande_prochain_id_mission
-from annuaire.erreurs import MissionIntrouvable
+from annuaire.donnees import missions as donnees_missions
 from annuaire.schemas.missions import MissionEntree, MissionPatch, MissionSortie
 
 lecture = APIRouter(tags=["Missions"], prefix="/api/missions")
@@ -39,20 +35,20 @@ IdMission = Annotated[int, Path(ge=1, description="Identifiant de la mission")]
     summary="Lister les missions",
     responses={**REPONSE_422_PAGINATION},
 )
-def lister_missions(
+async def lister_missions(
     page: PaginationInjectee,
-    depot_missions: DepotMissionsInjecte,
+    bdd: SessionBdd,
     annee: Annotated[
         int | None,
         Query(ge=ANNEE_MINIMALE, description="Filtrer les missions depuis l'année"),
-    ] = None
+    ] = None,
 ):
     """Renvoie la liste des missions, éventuellement filtrée par année."""
-
-    resultats = list(depot_missions.values())
-    if annee:
-        resultats = [m for m in resultats if m["annee"] >= annee]
-    return resultats[page.decalage : page.decalage + page.limite]
+    # Filtre et pagination sont faits par la base (WHERE, OFFSET, LIMIT),
+    # plus en Python sur la liste complète.
+    return await donnees_missions.lister(
+        bdd, annee=annee, limite=page.limite, decalage=page.decalage
+    )
 
 
 @lecture.get(
@@ -61,12 +57,11 @@ def lister_missions(
     summary="Consulter une mission",
     responses={**REPONSE_404_MISSION},
 )
-def lire_mission(depot_missions: DepotMissionsInjecte, id_mission: IdMission):
+async def lire_mission(bdd: SessionBdd, id_mission: IdMission):
     """Renvoie les informations d'une mission donnée, identifiée par son identifiant."""
-    mission = depot_missions.get(id_mission)
-    if mission is None:
-        raise MissionIntrouvable(id_mission)
-    return mission
+    # On retourne l'objet SQLAlchemy : MissionSortie (from_attributes) le
+    # convertit, programme calculé compris.
+    return await donnees_missions.trouver(bdd, id_mission)
 
 
 @ecriture.post(
@@ -76,15 +71,13 @@ def lire_mission(depot_missions: DepotMissionsInjecte, id_mission: IdMission):
     responses={**REPONSE_400, **REPONSE_422},
     status_code=201,
 )
-def creer_mission(depot_missions: DepotMissionsInjecte, entree: MissionEntree, response: Response):
+async def creer_mission(bdd: SessionBdd, entree: MissionEntree, response: Response):
     """Ajoute une mission et renvoie son en-tête Location."""
-
-    prochain_id = demande_prochain_id_mission()
-
-    mission = {"id": prochain_id, **entree.model_dump()}
-    depot_missions[prochain_id] = mission
-    response.headers["Location"] = f"/api/missions/{prochain_id}"
-
+    mission = await donnees_missions.creer(bdd, entree.model_dump())
+    # Le commit appartient à la route : c'est elle qui décide quand la
+    # transaction se termine. L'identifiant existe déjà depuis le flush.
+    await bdd.commit()
+    response.headers["Location"] = f"/api/missions/{mission.id}"
     return mission
 
 
@@ -95,14 +88,11 @@ def creer_mission(depot_missions: DepotMissionsInjecte, entree: MissionEntree, r
     responses={**REPONSE_400, **REPONSE_404_MISSION, **REPONSE_422},
     status_code=200,
 )
-def remplacer_mission(depot_missions: DepotMissionsInjecte, entree: MissionEntree, id_mission: IdMission):
+async def remplacer_mission(bdd: SessionBdd, entree: MissionEntree, id_mission: IdMission):
     """Remplace les informations d'une mission donnée : tous les champs requis."""
-
-    mission = depot_missions.get(id_mission)
-    if mission is None:
-        raise MissionIntrouvable(id_mission)
-
-    mission.update(entree.model_dump())
+    mission = await donnees_missions.trouver(bdd, id_mission)
+    donnees_missions.modifier(mission, entree.model_dump())
+    await bdd.commit()
     return mission
 
 
@@ -113,14 +103,11 @@ def remplacer_mission(depot_missions: DepotMissionsInjecte, entree: MissionEntre
     responses={**REPONSE_400, **REPONSE_404_MISSION, **REPONSE_422},
     status_code=200,
 )
-def modifier_mission(depot_missions: DepotMissionsInjecte, entree: MissionPatch, id_mission: IdMission):
+async def modifier_mission(bdd: SessionBdd, entree: MissionPatch, id_mission: IdMission):
     """Modifie partiellement les informations d'une mission donnée : au moins un champ requis."""
-
-    mission = depot_missions.get(id_mission)
-    if mission is None:
-        raise MissionIntrouvable(id_mission)
-
-    mission.update(entree.model_dump(exclude_unset=True))
+    mission = await donnees_missions.trouver(bdd, id_mission)
+    donnees_missions.modifier(mission, entree.model_dump(exclude_unset=True))
+    await bdd.commit()
     return mission
 
 
@@ -130,11 +117,8 @@ def modifier_mission(depot_missions: DepotMissionsInjecte, entree: MissionPatch,
     responses={**REPONSE_404_MISSION},
     status_code=204,
 )
-def supprimer_mission(depot_missions: DepotMissionsInjecte, id_mission: IdMission):
+async def supprimer_mission(bdd: SessionBdd, id_mission: IdMission):
     """Supprime une mission donnée."""
-
-    mission = depot_missions.get(id_mission)
-    if mission is None:
-        raise MissionIntrouvable(id_mission)
-
-    del depot_missions[id_mission]
+    mission = await donnees_missions.trouver(bdd, id_mission)
+    await donnees_missions.supprimer(bdd, mission)
+    await bdd.commit()

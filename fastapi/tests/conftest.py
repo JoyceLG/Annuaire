@@ -1,8 +1,12 @@
 """Fixtures partagées par tous les fichiers de tests.
 
-Les astronautes vivent dans le dictionnaire `ASTRONAUTES`, partagé par toute
-l'application : sans remise à zéro, un test qui supprime Neil Armstrong le
-supprimerait aussi pour les tests suivants.
+Les astronautes vivent encore dans le dictionnaire `ASTRONAUTES`, partagé par
+toute l'application : sans remise à zéro, un test qui supprime Neil Armstrong
+le supprimerait aussi pour les tests suivants.
+
+Les missions, elles, sont en base. Chaque test construit sa propre
+application, donc son propre moteur, donc sa propre base SQLite en mémoire :
+l'isolation est obtenue par construction, sans rien restaurer.
 """
 
 import copy
@@ -13,7 +17,7 @@ from fastapi.testclient import TestClient
 from annuaire import creer_app
 from annuaire.dependances import authentification_requise
 from annuaire.donnees import demonstration
-from annuaire.donnees.demonstration import ASTRONAUTES, MISSIONS
+from annuaire.donnees.demonstration import ASTRONAUTES
 
 
 @pytest.fixture(autouse=True)
@@ -40,22 +44,6 @@ def astronautes_neufs():
     demonstration.id_astronaute_courant = id_courant
 
 
-@pytest.fixture(autouse=True)
-def missions_neuves():
-    """Restaure les missions de démonstration après chaque test.
-
-    Même raisonnement que pour les astronautes : restauration en place du
-    dictionnaire, copie profonde, et compteur d'identifiants remis à sa valeur.
-    """
-
-    sauvegarde = copy.deepcopy(MISSIONS)
-    id_courant = demonstration.id_mission_courant
-    yield
-    MISSIONS.clear()
-    MISSIONS.update(sauvegarde)
-    demonstration.id_mission_courant = id_courant
-
-
 @pytest.fixture
 def app():
     """L'application de test, partagée par les clients d'un même test.
@@ -75,11 +63,20 @@ def client_authentifie(app):
     authentifié dans un test qui demande les deux fixtures.
     """
     app.dependency_overrides[authentification_requise] = lambda: None
-    client = TestClient(app)
-    yield client
+    # `with` est indispensable : voir la fixture `client`.
+    with TestClient(app) as client:
+        yield client
     app.dependency_overrides.clear()
 
 
 @pytest.fixture
 def client(app):
-    return TestClient(app)
+    """Un client qui démarre réellement l'application.
+
+    Le `with` n'est pas décoratif : sans lui, TestClient n'exécute PAS le
+    lifespan. Le moteur ne serait jamais créé, `app.state.fabrique`
+    n'existerait pas, et toute route touchant la base répondrait 500.
+    C'est le piège principal de cette session.
+    """
+    with TestClient(app) as client:
+        yield client

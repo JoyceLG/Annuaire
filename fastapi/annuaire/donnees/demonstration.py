@@ -36,26 +36,16 @@ ASTRONAUTES: dict[int, dict] = {
     },
 }
 
-MISSIONS: dict[int, dict] = {
-    1: {
-        "id": 1,
-        "nom": "Apollo 11",
-        "annee": 1969,
-    },
-    2: {
-        "id": 2,
-        "nom": "Apollo 12",
-        "annee": 1969,
-    },
-    3: {
-        "id": 3,
-        "nom": "Apollo 13",
-        "annee": 1970,
-    },
-}
+# Insérées au démarrage si la base est vide (voir bdd.cycle_de_vie).
+# Les identifiants sont explicites pour que les tests puissent viser
+# /api/missions/1 ; la base attribue ensuite la suite (4, 5...).
+MISSIONS_DEMONSTRATION: list[dict] = [
+    {"id": 1, "nom": "Apollo 11", "annee": 1969},
+    {"id": 2, "nom": "Apollo 12", "annee": 1969},
+    {"id": 3, "nom": "Apollo 13", "annee": 1970},
+]
 
 id_astronaute_courant: int = max(ASTRONAUTES, default=0)
-id_mission_courant: int = max(MISSIONS, default=0)
 
 
 def demande_prochain_id_astronaute() -> int:
@@ -63,10 +53,3 @@ def demande_prochain_id_astronaute() -> int:
     global id_astronaute_courant
     id_astronaute_courant += 1
     return id_astronaute_courant
-
-
-def demande_prochain_id_mission() -> int:
-    """Retourne un identifiant de mission jamais attribué."""
-    global id_mission_courant
-    id_mission_courant += 1
-    return id_mission_courant

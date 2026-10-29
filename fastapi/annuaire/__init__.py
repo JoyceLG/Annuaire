@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from annuaire.bdd import cycle_de_vie
 from annuaire.config import Config, choisir_config
 from annuaire.gestionnaires import enregistrer_gestionnaires
 from annuaire.routes import astronautes, documentation, missions, technique
@@ -31,6 +32,10 @@ def creer_app(config: type[Config] | str | None = None) -> FastAPI:
         docs_url="/docs" if publique else None,
         redoc_url="/redoc" if publique else None,
         openapi_url="/openapi.json" if publique else None,
+        # Ouvre le moteur et le pool avant la première requête, les ferme
+        # après la dernière. Lit app.state.config, posé juste en dessous :
+        # le lifespan ne s'exécute qu'au démarrage du serveur, donc après.
+        lifespan=cycle_de_vie,
     )
     # Lue à chaque requête par la dépendance `configuration` : c'est la
     # configuration choisie ici qui s'applique, pas celle d'ENVIRONNEMENT.

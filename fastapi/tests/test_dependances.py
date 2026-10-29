@@ -9,15 +9,18 @@ import logging
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 from annuaire import creer_app
+from annuaire.bdd import session_bdd
 from annuaire.config import ConfigTest
 from annuaire.dependances import (
     depot_astronautes,
-    depot_missions,
     jeton_de_l_en_tete,
     jeton_valide,
 )
+from annuaire.modeles import Base, Mission
 
 # Chaque liste paginée, avec les noms de son jeu de démonstration, dans l'ordre.
 LISTES = {
@@ -35,8 +38,13 @@ class ConfigPetitesPages(ConfigTest):
 
 @pytest.fixture
 def client_petites_pages():
-    """Un client sur une application construite avec ConfigPetitesPages."""
-    return TestClient(creer_app(ConfigPetitesPages))
+    """Un client sur une application construite avec ConfigPetitesPages.
+
+    `with` : sans lui, le lifespan ne s'exécute pas et /api/missions
+    n'aurait pas de base (voir la fixture `client` de conftest).
+    """
+    with TestClient(creer_app(ConfigPetitesPages)) as client:
+        yield client
 
 
 def noms(reponse):
@@ -112,10 +120,9 @@ def test_pagination_limite_maximale_de_la_configuration(client_petites_pages, ch
 # quand ENVIRONNEMENT désigne un autre environnement.
 def test_pagination_suit_la_configuration_de_creer_app(monkeypatch):
     monkeypatch.setenv("ENVIRONNEMENT", "developpement")
-    client = TestClient(creer_app(ConfigPetitesPages))
-
-    assert len(client.get("/api/missions").json()) == 2
-    assert client.get("/api/missions?limite=3").status_code == 422
+    with TestClient(creer_app(ConfigPetitesPages)) as client:
+        assert len(client.get("/api/missions").json()) == 2
+        assert client.get("/api/missions?limite=3").status_code == 422
 
 
 # --- Dépôts --------------------------------------------------------------
@@ -131,7 +138,8 @@ def test_pagination_suit_la_configuration_de_creer_app(monkeypatch):
             depot_astronautes,
             {"id": 7, "nom": "Thomas Pesquet", "role": "specialiste", "nationalite": "Française"},
         ),
-        ("/api/missions", depot_missions, {"id": 7, "nom": "Proxima", "annee": 2016}),
+        # Les missions n'ont plus de dépôt : elles lisent la session de base
+        # injectée, vérifiée par test_missions_lisent_la_session_injectee.
     ],
 )
 def test_routes_lisent_le_depot_injecte(app, client, chemin, depot, element):
@@ -142,9 +150,43 @@ def test_routes_lisent_le_depot_injecte(app, client, chemin, depot, element):
     assert client.get(f"{chemin}/1").status_code == 404
 
 
+async def session_avec_proxima():
+    """Une session sur une base distincte, ne contenant que Proxima.
+
+    Le moteur est créé ici, dans la boucle d'événements de la requête :
+    une connexion aiosqlite est liée à la boucle qui l'a ouverte, et en
+    créer une hors de cette boucle échouerait à l'usage.
+    """
+    moteur = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
+    )
+    async with moteur.begin() as connexion:
+        await connexion.run_sync(Base.metadata.create_all)
+    fabrique = async_sessionmaker(moteur, expire_on_commit=False)
+    async with fabrique() as session:
+        session.add(Mission(id=7, nom="Proxima", annee=2016))
+        await session.commit()
+    async with fabrique() as session:
+        yield session
+    await moteur.dispose()
+
+
+# Vérifie que les routes des missions lisent la session injectée, et non une
+# base fixée en dur : en remplaçant session_bdd, la route ne voit plus que
+# Proxima. C'est dependency_overrides appliqué à la base de données.
+def test_missions_lisent_la_session_injectee(app, client):
+    app.dependency_overrides[session_bdd] = session_avec_proxima
+
+    assert noms(client.get("/api/missions")) == ["Proxima"]
+    assert client.get("/api/missions/7").json()["nom"] == "Proxima"
+    assert client.get("/api/missions/1").status_code == 404
+
+
 # Vérifie que le dépôt est refermé après la requête, même quand la route
 # lève une exception (ici un 404).
-@pytest.mark.parametrize("chemin", ["/api/astronautes/999", "/api/missions/999"])
+@pytest.mark.parametrize("chemin", ["/api/astronautes/999"])
 def test_depot_referme_meme_en_cas_d_erreur(client, caplog, chemin):
     caplog.set_level(logging.DEBUG, logger="annuaire.dependances")
 

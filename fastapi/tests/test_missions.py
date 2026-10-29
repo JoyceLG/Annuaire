@@ -240,3 +240,16 @@ def test_toutes_les_ecritures_exigent_un_jeton(client):
     for methode, chemin in ecritures:
         reponse = client.request(methode, chemin)
         assert reponse.status_code == 401, f"{methode.upper()} {chemin} non protégée"
+
+
+# Un identifiant libéré n'est jamais réattribué (garantie de la session 6).
+# Sans AUTOINCREMENT, SQLite réattribuerait 4 à la mission recréée, et un
+# client qui avait mémorisé /api/missions/4 pointerait vers une autre mission.
+def test_identifiant_supprime_jamais_reattribue(client_authentifie):
+    creee = client_authentifie.post("/api/missions", json=APOLLO_14)
+    id_supprime = creee.json()["id"]
+    assert client_authentifie.delete(f"/api/missions/{id_supprime}").status_code == 204
+
+    recreee = client_authentifie.post("/api/missions", json=APOLLO_14)
+
+    assert recreee.json()["id"] != id_supprime

@@ -1,3 +1,10 @@
 pytest==9.1.1
 pydantic==2.13.5
 fastapi[standard]==0.141.1
+# SQLAlchemy asynchrone : l'extra `asyncio` installe greenlet, le pont entre
+# le cœur synchrone de SQLAlchemy et la boucle d'événements.
+sqlalchemy[asyncio]==2.1.6
+# Pilotes asynchrones : aiosqlite pour le développement et les tests,
+# asyncpg pour PostgreSQL.
+aiosqlite==0.22.1
+asyncpg==0.31.0
