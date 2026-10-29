@@ -48,16 +48,19 @@ class MissionPatch(BaseModel):
             raise ValueError("un champ envoyé ne peut pas être null")
         return self
 
+class MembreSortie(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    nom: str
+
 
 class MissionSortie(BaseModel):
-    # from_attributes : Pydantic lit les attributs d'un objet (ici un modèle
-    # SQLAlchemy), pas seulement les clés d'un dictionnaire. C'est ce qui
-    # rend en_dict() inutile — la route retourne directement l'objet.
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     nom: str
     annee: int
+    equipage: list[MembreSortie]      # traverse la relation
 
     @computed_field
     @property

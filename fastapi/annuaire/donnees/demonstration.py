@@ -45,6 +45,12 @@ MISSIONS_DEMONSTRATION: list[dict] = [
     {"id": 3, "nom": "Apollo 13", "annee": 1970},
 ]
 
+EQUIPAGE_DEMONSTRATION: list[dict] = [
+    {"nom": "Neil Armstrong", "mission_id": 1},
+    {"nom": "Buzz Aldrin", "mission_id": 1},
+    {"nom": "Alan Bean", "mission_id": 2},
+]
+
 id_astronaute_courant: int = max(ASTRONAUTES, default=0)
 
 

@@ -10,6 +10,7 @@ transaction se termine (session 11).
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from annuaire.erreurs import MissionIntrouvable
 from annuaire.modeles import Mission
@@ -23,21 +24,21 @@ async def lister(
     decalage: int,
 ) -> list[Mission]:
     """Les missions, éventuellement depuis une année, paginées."""
-    requete = select(Mission)
+    requete = select(Mission).options(selectinload(Mission.equipage))
     if annee is not None:
         requete = requete.where(Mission.annee >= annee)
-    # Sans ORDER BY, SQL ne garantit aucun ordre : SQLite renvoyait l'ordre
-    # d'insertion par hasard, PostgreSQL ne le fait pas (session 20). La
-    # pagination exige un ordre stable, sinon des lignes sautent d'une page
-    # à l'autre.
     requete = requete.order_by(Mission.id).offset(decalage).limit(limite)
     resultat = await bdd.scalars(requete)
     return list(resultat.all())
 
 
 async def trouver(bdd: AsyncSession, id_mission: int) -> Mission:
-    """La mission demandée, ou MissionIntrouvable."""
-    mission = await bdd.get(Mission, id_mission)
+    requete = (
+        select(Mission)
+        .options(selectinload(Mission.equipage))
+        .where(Mission.id == id_mission)
+    )
+    mission = (await bdd.scalars(requete)).first()
     if mission is None:
         raise MissionIntrouvable(id_mission)
     return mission
@@ -45,7 +46,10 @@ async def trouver(bdd: AsyncSession, id_mission: int) -> Mission:
 
 async def creer(bdd: AsyncSession, champs: dict) -> Mission:
     """Ajoute une mission. L'identifiant est attribué par la base au flush."""
-    mission = Mission(**champs)
+    # equipage=[] : une mission neuve n'a pas d'équipage. Sans cette valeur,
+    # lire mission.equipage (MissionSortie le fait) lancerait un chargement
+    # paresseux, impossible en asynchrone : MissingGreenlet.
+    mission = Mission(**champs, equipage=[])
     bdd.add(mission)
     # flush envoie l'INSERT sans terminer la transaction : la base attribue
     # l'identifiant, que la route peut lire pour construire son Location.

@@ -8,8 +8,8 @@ import re
 
 APOLLO_14 = {"nom": "Apollo 14", "annee": 1971}
 # Ce que l'API renvoie pour APOLLO_14, hors identifiant : les champs envoyés,
-# plus le programme calculé par MissionSortie.
-APOLLO_14_SORTIE = {**APOLLO_14, "programme": "Apollo"}
+# plus le programme calculé par MissionSortie et l'équipage (vide).
+APOLLO_14_SORTIE = {**APOLLO_14, "programme": "Apollo", "equipage": []}
 
 
 # Liste complète : les trois missions du jeu de démonstration
@@ -28,6 +28,7 @@ def test_lire_mission_existante(client):
         "nom": "Apollo 11",
         "annee": 1969,
         "programme": "Apollo",
+        "equipage": [],
     }
 
 
@@ -164,7 +165,7 @@ def test_put_inexistant(client_authentifie):
 def test_patch_ne_touche_que_les_champs_envoyes(client_authentifie):
     reponse = client_authentifie.patch("/api/missions/1", json={"nom": "Gemini 4"})
     assert reponse.status_code == 200
-    attendu = {"id": 1, "nom": "Gemini 4", "annee": 1969, "programme": "Gemini"}
+    attendu = {"id": 1, "nom": "Gemini 4", "annee": 1969, "programme": "Gemini", "equipage": []}
     assert reponse.json() == attendu
     assert client_authentifie.get("/api/missions/1").json() == attendu
 
