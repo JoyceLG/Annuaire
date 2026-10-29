@@ -100,3 +100,48 @@ REPONSE_422_AVEC_COHERENCE = {
         },
     }
 }
+
+REPONSE_401 = {
+    401: {
+        "model": Erreur,
+        "description": "Jeton absent ou invalide : en-tête `Authorization: Bearer <jeton>` requis.",
+        "content": {"application/json": {"example": {"erreur": "Authentification requise"}}},
+    }
+}
+
+# Une liste refuse ses paramètres de deux façons : Pydantic les valide
+# (format {"detail": [...]}), puis la pagination compare la limite au maximum
+# de la configuration (format {"erreur": ...}).
+REPONSE_422_PAGINATION = {
+    422: {
+        "model": ErreurValidation | Erreur,
+        "description": (
+            "Les paramètres ne sont pas valides, ou la limite dépasse le "
+            "maximum autorisé."
+        ),
+        "content": {
+            "application/json": {
+                "examples": {
+                    "validation": {
+                        "summary": "Paramètre invalide",
+                        "value": {
+                            "detail": [
+                                {
+                                    "type": "greater_than_equal",
+                                    "loc": ["query", "limite"],
+                                    "msg": "Input should be greater than or equal to 1",
+                                    "input": "0",
+                                    "ctx": {"ge": 1},
+                                }
+                            ]
+                        },
+                    },
+                    "limite": {
+                        "summary": "Limite au-delà du maximum",
+                        "value": {"erreur": "la limite ne peut pas dépasser 100 (reçu : 101)"},
+                    },
+                }
+            }
+        },
+    }
+}

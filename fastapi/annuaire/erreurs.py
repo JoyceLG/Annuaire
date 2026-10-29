@@ -21,3 +21,14 @@ class QualificationIncoherente(ValueError):
 class MissionIntrouvable(Exception):
     def __init__(self, id_mission: int):
         self.id_mission = id_mission
+
+
+class AuthentificationRequise(Exception):
+    """Route protégée appelée sans jeton valide."""
+
+
+class LimiteTropGrande(Exception):
+    def __init__(self, limite: int, maximum: int):
+        self.limite = limite
+        self.maximum = maximum
+        super().__init__(f"la limite ne peut pas dépasser {maximum} (reçu : {limite})")

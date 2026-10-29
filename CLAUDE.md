@@ -113,10 +113,11 @@ Le code ne connaît aucune technologie de base : elle vient tout entière de
 - **Un commit par session**, titré `Session N — titre en minuscules`, daté du
   jour où la session est validée. L'historique se lit comme la progression de
   la formation : ne jamais réécrire un commit déjà sur `main`.
-- Une session en cours vit sur une branche `sessionNN`. Une fois commitée, la
-  branche est poussée pour vérification ; elle n'est fusionnée dans `main` en
-  avance rapide (`--ff-only`), puis supprimée en local et sur GitHub, qu'après
-  le feu vert explicite de l'auteur.
+- Une session en cours vit sur une branche locale `sessionNN`, créée par
+  l'auteur. Une fois commitée, elle reste en local pour vérification : **rien n'est poussé ni
+  fusionné avant la validation finale explicite de l'auteur**. Ensuite
+  seulement, fusion dans `main` en avance rapide (`--ff-only`), push de
+  `main`, et suppression de la branche locale.
 - Le README décrit l'état de la session qui vient d'être commitée (format :
   voir le skill `validate-projet-annuaire`).
 - Valider une session : `/validate-projet-annuaire`.

@@ -28,5 +28,3 @@ def verifier_qualification(role: str, type_qualification: str) -> None:
 
 # Bornes métier.
 ANNEE_MINIMALE = 1900
-LIMITE_FILTRE_MIN = 1
-LIMITE_FILTRE_MAX = 100

@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from annuaire import creer_app
+from annuaire.dependances import authentification_requise
 from annuaire.donnees import demonstration
 from annuaire.donnees.demonstration import ASTRONAUTES, MISSIONS
 
@@ -56,5 +57,29 @@ def missions_neuves():
 
 
 @pytest.fixture
-def client():
-    return TestClient(creer_app("test"))
+def app():
+    """L'application de test, partagée par les clients d'un même test.
+
+    Un test peut ainsi y remplacer une dépendance (`app.dependency_overrides`)
+    avant d'interroger `client` : le remplacement s'applique, et disparaît
+    avec l'application à la fin du test.
+    """
+    return creer_app("test")
+
+
+@pytest.fixture
+def client_authentifie(app):
+    """Un client dispensé d'en-tête Authorization, pour tester les écritures.
+
+    Attention : `client` utilise la même application, il est donc lui aussi
+    authentifié dans un test qui demande les deux fixtures.
+    """
+    app.dependency_overrides[authentification_requise] = lambda: None
+    client = TestClient(app)
+    yield client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client(app):
+    return TestClient(app)

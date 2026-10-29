@@ -7,6 +7,8 @@ from fastapi.responses import JSONResponse
 
 from annuaire.erreurs import (
     AstronauteIntrouvable,
+    AuthentificationRequise,
+    LimiteTropGrande,
     MissionIntrouvable,
     QualificationIncoherente,
 )
@@ -53,3 +55,20 @@ def enregistrer_gestionnaires(app):
             status_code=404,
             content={"erreur": f"La mission {erreur.id_mission} n'existe pas"},
         )
+
+    @app.exception_handler(AuthentificationRequise)
+    async def gerer_authentification_requise(
+        request: Request, erreur: AuthentificationRequise
+    ):
+        # Un 401 doit dire au client quel schéma d'authentification est attendu.
+        return JSONResponse(
+            status_code=401,
+            content={"erreur": "Authentification requise"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    @app.exception_handler(LimiteTropGrande)
+    async def gerer_limite_trop_grande(request: Request, erreur: LimiteTropGrande):
+        # 422 comme toute valeur refusée : le maximum vient de la configuration,
+        # il ne peut pas être écrit dans Query(le=...) comme le minimum.
+        return JSONResponse(status_code=422, content={"erreur": str(erreur)})

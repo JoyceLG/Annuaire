@@ -4,6 +4,7 @@ __pycache__/
 venv/
 .pytest_cache/
 .ruff_cache/
+.claude/settings.local.json
 
 # Secrets locaux : voir .env.exemple pour la liste des variables attendues
 .env

@@ -1,13 +1,15 @@
 ---
 name: validate-projet-annuaire
-description: Valide une session de la formation sur le projet Annuaire — relit le code de la session, lance les tests, fait des retours avant toute correction, met le README à jour, crée le commit unique de la session sur sa branche, puis la fusionne dans main seulement après vérification et feu vert de l'auteur. À utiliser quand l'auteur demande de valider, clôturer, commiter ou fusionner sa session.
+description: Valide une session de la formation sur le projet Annuaire — relit le code de la session, lance les tests, fait des retours avant toute correction, met le README à jour, crée le commit unique de la session sur sa branche locale, puis la fusionne dans main et pousse seulement après la validation finale de l'auteur. À utiliser quand l'auteur demande de valider, clôturer, commiter ou fusionner sa session.
 ---
 
 # Valider une session du projet Annuaire
 
 Dérouler les étapes dans l'ordre. Deux points d'arrêt obligatoires : après la
 revue (étape 4) et après le commit, sur la branche de session (étape 7).
-**Ne jamais fusionner dans `main` sans le feu vert explicite de l'auteur.**
+**Avant la validation finale explicite de l'auteur : ne jamais fusionner
+dans `main`, et ne rien pousser sur GitHub** (aucun `git push`). Tout reste
+local jusque-là.
 Tout est rédigé en français.
 
 Rappel des règles du projet : voir `CLAUDE.md`. En particulier, **aucune
@@ -23,21 +25,22 @@ traitent depuis la racine.
 
 ## 1. Situer la session
 
+L'auteur crée lui-même la branche `sessionNN` et y développe, sans commiter.
+Le skill intervient quand ce développement est terminé : on part donc de la
+branche `sessionNN`, avec des modifications non commitées.
+
 ```bash
 git status --short
 git branch --show-current
 git log main --oneline -3
-git log main..HEAD --oneline          # commits de la session déjà faits
 ```
 
-- **Numéro N** : celui de la branche `sessionNN`, sinon le dernier
-  `Session N` de `main` + 1.
+- **Numéro N** : celui de la branche `sessionNN`.
 - **Titre** : celui de la session N dans `../../programme-formation-fastapi-flask-part4.md`
   (à défaut les autres fichiers `programme-*.md`), en minuscules et raccourci
   comme les précédents (`journal applicatif`, `configuration et secrets`).
-- Si on est sur `main` avec des modifications, créer la branche
-  `git switch -c sessionNN` avant toute chose.
-- S'il n'y a rien de nouveau par rapport à `main`, le dire et s'arrêter.
+- Si on n'est pas sur une branche `sessionNN`, ou s'il n'y a aucune
+  modification, le dire et s'arrêter.
 
 Annoncer en une ligne : « Session N — titre, X fichiers modifiés ».
 
@@ -158,11 +161,10 @@ pytest -q avec le nombre de tests à jour.>
 
 ## 6. Le commit unique de la session
 
-Un seul commit par session. Si la branche contient déjà des commits (par
-exemple « Session N — … (en cours) »), les fusionner en un seul :
+Un seul commit par session, qui regroupe tout le travail non commité de la
+branche :
 
 ```bash
-git reset --soft main
 git add -A
 git status --short                     # vérifier : ni .env, ni *.db, ni cache
 git commit
@@ -181,35 +183,33 @@ Session N — titre
 <ligne d'attribution Co-Authored-By prévue par Claude Code>
 ```
 
-## 7. Rester sur la branche de session — point d'arrêt
+## 7. Rester sur la branche de session, en local — point d'arrêt
 
-Ne pas fusionner. L'auteur vérifie la branche `sessionNN` avant toute fusion
-dans `main`.
-
-Demander confirmation avant de publier la branche, puis :
+Ne pas fusionner, **ne rien pousser**. L'auteur vérifie la branche locale
+`sessionNN` avant toute fusion dans `main` et toute publication.
 
 ```bash
-git fetch
-git push -u origin sessionNN           # --force-with-lease si le commit a été amendé après un push
-git status -sb                         # doit afficher sessionNN...origin/sessionNN, sans écart
+git log main..sessionNN --oneline      # exactement un commit : celui de la session
 ```
 
-Donner le hash et le titre du commit, puis **s'arrêter et attendre** le feu
-vert explicite pour fusionner. Si l'auteur demande des retouches, amender le
-commit de la session (un seul commit par session) et repousser la branche.
+Donner le hash et le titre du commit, puis **s'arrêter et attendre** la
+validation finale explicite. Si l'auteur demande des retouches, amender le
+commit de la session (un seul commit par session) : rien n'étant poussé,
+l'amendement ne demande aucun push forcé.
 
-## 8. Fusionner et pousser main — après feu vert
+## 8. Fusionner et pousser main — après validation finale
 
-Seulement quand l'auteur a dit de fusionner :
+Seulement quand l'auteur a explicitement validé la fusion et le push. Une
+réponse à une question (« c'est fusionné ? ») n'est pas une validation.
 
 ```bash
 git fetch
+git status -sb                         # main ne doit pas être en retard sur origin/main
 git switch main
 git merge --ff-only sessionNN
 git log --oneline -3
 git push origin main
-git push origin --delete sessionNN
-git branch -D sessionNN
+git branch -d sessionNN                # -d : refuse si le commit n'est pas dans main
 git status -sb                         # doit afficher main...origin/main, sans écart
 ```
 
@@ -220,4 +220,4 @@ jamais faire de merge commit ni de rebase de `main`.
 
 En quelques lignes : le commit (hash et titre), le nombre de tests, ce qui a été
 corrigé à la demande de l'auteur, ce qui a été signalé mais laissé tel quel,
-et l'état de GitHub (branche de session poussée, `main` fusionné ou non).
+et l'état de GitHub (`main` poussé ou non ; aucune branche de session n'y est publiée).

@@ -18,6 +18,8 @@ class Config:
     """
 
     DOCUMENTATION_PUBLIQUE = False
+    LIMITE_PAGINATION_DEFAUT = 20
+    LIMITE_PAGINATION_MAX = 100
 
 
 class ConfigDeveloppement(Config):

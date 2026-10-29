@@ -1,49 +1,50 @@
-# Annuaire des astronautes — Session 25 : la documentation générée automatiquement
+# Annuaire des astronautes — Session 26 : l'injection de dépendances
 
 API REST sur Postgres ou SQLite, au choix, avec authentification JWT, rôles,
 migrations Alembic et tests pytest, servie par Gunicorn dans deux conteneurs
-Docker. Cette session documente le projet FastAPI : schéma OpenAPI, Swagger UI
-et ReDoc, tenus pour vrais par des tests, et fermés en production.
+Docker. Cette session introduit l'injection de dépendances dans le projet
+FastAPI : pagination, données, configuration et authentification injectées.
 
 > Projet fil rouge de la formation « Flask, puis FastAPI ».
 > Un commit par session : `git log --oneline` retrace la progression du code.
 
 ## Ce que cette session apporte
 
-- **Une fabrique d'application** : `creer_app()` dans `annuaire/__init__.py`
-  remplace `main.py`, et se lance par `uvicorn --factory annuaire:creer_app`.
-  Les tests construisent chacun leur application, comme côté Flask.
-- **Une classe par environnement** (`annuaire/config.py`), choisie par
-  `ENVIRONNEMENT` (`developpement` par défaut, `test`, `production`). Un nom
-  inconnu empêche le démarrage, plutôt que de lancer la production avec les
-  réglages de développement.
-- **La documentation fermée en production** : `/docs`, `/redoc` et
-  `/openapi.json` répondent 404 quand `DOCUMENTATION_PUBLIQUE` est faux. Les
-  routes de l'API, elles, répondent toujours.
-- **Un schéma OpenAPI décrit** : titre, description, version et groupes
-  (`openapi_tags`) ; chaque `APIRouter` porte son étiquette et son préfixe ;
-  chaque route un `summary=`, et sa docstring pour description.
-- **Des champs décrits avec des exemples** : `Field(description=...,
-  examples=...)` sur les types `Nom`, `Nationalite`, `Role` et `Qualification`,
-  `Path(description=...)` sur les identifiants.
-- **Les réponses d'erreur documentées** : `annuaire/documentation.py` regroupe
-  les fragments `responses=` (400, 404, 422), chacun avec le modèle de son
-  corps d'erreur et un exemple. Le PATCH d'un astronaute déclare ses deux
-  formats de 422.
-- **Des PATCH décrits comme ils sont validés** : `minProperties: 1` publie le
-  refus du corps vide, et `SkipJsonSchema[None]` retire `null` des valeurs
-  annoncées.
-- **Des qualifications strictes** : chaque modèle de qualification a son propre
-  `extra="forbid", strict=True`, que le modèle parent ne lui transmet pas
-  (`false` devenait 0 heure de vol).
-- **La route de santé** déplacée dans `routes/technique.py`, sur
-  `/api/technique/sante`.
-- **108 tests FastAPI**, dont `test_documentation.py` : ce que la
-  documentation annonce (exemples de champs, exemples d'erreur 400, 404 et
-  422, absence de 404 sur les listes et de 409 à la création) est confronté
-  aux vraies réponses de l'application.
-- **`traduction.md`** : section « Documentation » remplie, avec une ligne
-  sur l'exposition de la documentation en production.
+- **Les dépendances injectées** (`fastapi/annuaire/dependances.py`) : les
+  routes déclarent dans leur signature ce dont elles ont besoin, et FastAPI le
+  leur fournit. Elles ne lisent plus les données ni la configuration dans des
+  globales, et un test peut remplacer chaque dépendance.
+- **Une pagination commune** : `limite` et `decalage` sur les deux listes,
+  par la dépendance `pagination`. Limite par défaut et limite maximale viennent
+  de la configuration (`LIMITE_PAGINATION_DEFAUT`, `LIMITE_PAGINATION_MAX`) ;
+  au-delà du maximum, 422 au format `{"erreur": ...}`, documenté.
+- **Des dépôts de données** : `depot_astronautes` et `depot_missions` sont des
+  dépendances générateurs. Le `yield` fournit les données, le `finally` libère
+  l'accès, même quand la route lève une exception.
+- **La configuration de l'application injectée** : `creer_app` range sa
+  classe de configuration dans `app.state`, et la dépendance `configuration`
+  la relit par la requête. Une classe passée à `creer_app` l'emporte donc sur
+  `ENVIRONNEMENT`.
+- **Les écritures protégées** : chaque ressource a un routeur `lecture` et un
+  routeur `ecriture`, ce dernier avec `dependencies=[Depends(authentification_requise)]`.
+  Contrôle provisoire : l'en-tête `Authorization: Bearer <jeton>` doit être
+  présent, le jeton n'est pas vérifié. Sans lui, 401 au format
+  `{"erreur": ...}` avec `WWW-Authenticate: Bearer`, documenté sur chaque
+  écriture.
+- **La documentation protégée en production** au lieu d'être fermée :
+  `routes/documentation.py` sert `/docs`, `/redoc` et `/openapi.json` derrière
+  un formulaire de connexion qui pose un cookie (`httponly`, `secure`,
+  `samesite=lax`). Swagger UI charge le schéma par une requête du
+  navigateur, qui ne porte que les cookies, pas l'en-tête. L'API, elle,
+  n'accepte que l'en-tête.
+- **Des tests qui remplacent les dépendances** : `app.dependency_overrides`
+  dans la fixture `client_authentifie` ; `test_dependances.py` pour la
+  pagination, les dépôts et l'authentification ;
+  `test_toutes_les_ecritures_exigent_un_jeton` parcourt le schéma OpenAPI
+  pour vérifier qu'aucune écriture n'est ouverte.
+- **174 tests FastAPI.**
+- **`traduction.md`** : section « Dépendances et configuration » remplie, et
+  ligne sur l'exposition de la documentation en production mise à jour.
 
 ## Lancer
 
@@ -122,14 +123,15 @@ cd fastapi
 source ../.venv/bin/activate
 pip install -r requirements.txt
 uvicorn --factory annuaire:creer_app --reload   # http://127.0.0.1:8000/docs
-pytest -q                                   # 108 tests
+pytest -q                                   # 174 tests
 ```
 
 Il n'a ni base ni `.env` : astronautes et missions vivent en mémoire et
 repartent du jeu de démonstration (Neil Armstrong, Alan Bean, Sophie Adenot ;
 Apollo 11, 12 et 13) à chaque démarrage. Sans `ENVIRONNEMENT`, c'est le
-développement : la documentation est ouverte. En production,
-`ENVIRONNEMENT=production` la ferme.
+développement : la documentation est ouverte. En production
+(`ENVIRONNEMENT=production`), `/docs` demande un jeton, et les écritures de
+l'API exigent toujours l'en-tête `Authorization: Bearer <jeton>`.
 
 ## Docker, cas par cas
 
@@ -322,13 +324,15 @@ fastapi/                   le projet FastAPI ; ses commandes se lancent d'ici
 ├── annuaire/
 │   ├── __init__.py        creer_app() : la fabrique, routeurs, gestionnaires et métadonnées OpenAPI
 │   ├── config.py          une classe par environnement, choisie par ENVIRONNEMENT
+│   ├── dependances.py     dépendances injectées : configuration, pagination, dépôts, authentification
 │   ├── documentation.py   fragments responses= réutilisables : modèles et exemples d'erreur
 │   ├── contraintes.py     longueurs, bornes, rôles et qualifications admises par rôle
 │   ├── schemas/           entrée, PATCH et sortie (Pydantic) : astronautes.py, missions.py, commun.py
 │   ├── donnees/           demonstration.py : astronautes et missions en mémoire, un compteur d'id chacun
 │   ├── erreurs.py         les exceptions métier
 │   ├── gestionnaires.py   exception métier → code HTTP
-│   └── routes/            un APIRouter par ressource : astronautes.py, missions.py, technique.py (santé)
+│   └── routes/            astronautes.py et missions.py (routeurs lecture et ecriture), technique.py (santé),
+│                          documentation.py (documentation protégée, hors DOCUMENTATION_PUBLIQUE)
 ├── tests/                 conftest.py + un fichier par domaine
 ├── requirements.txt
 └── pytest.ini             met fastapi/ sur sys.path pour que `pytest` trouve `annuaire`
@@ -382,6 +386,10 @@ flask promouvoir camille@example.com admin
   worker à l'autre. C'est pourquoi la clé JWT vient toujours de
   l'environnement en production, et pourquoi le pool se dimensionne par
   worker.
+- **Côté FastAPI, les écritures passent par le routeur `ecriture`**, qui
+  porte la dépendance d'authentification. Une écriture déclarée par erreur sur
+  `lecture` serait ouverte : `test_toutes_les_ecritures_exigent_un_jeton`
+  échoue dans ce cas.
 - **Les listes sont triées par identifiant** (`order_by`) : sans cela, aucune
   base ne garantit d'ordre.
 - Repartir de zéro : `alembic downgrade base && alembic upgrade head && flask peupler`.

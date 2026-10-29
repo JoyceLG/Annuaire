@@ -2,7 +2,7 @@ from fastapi import FastAPI
 
 from annuaire.config import Config, choisir_config
 from annuaire.gestionnaires import enregistrer_gestionnaires
-from annuaire.routes import astronautes, missions, technique
+from annuaire.routes import astronautes, documentation, missions, technique
 
 __all__ = ["creer_app"]
 
@@ -12,7 +12,7 @@ def creer_app(config: type[Config] | str | None = None) -> FastAPI:
     if config is None or isinstance(config, str):
         config = choisir_config(config)
 
-    documentee = config.DOCUMENTATION_PUBLIQUE
+    publique = config.DOCUMENTATION_PUBLIQUE
 
     app = FastAPI(
         title="Annuaire des astronautes",
@@ -26,14 +26,23 @@ def creer_app(config: type[Config] | str | None = None) -> FastAPI:
             {"name": "Missions", "description": "Missions spatiales."},
             {"name": "Technique", "description": "Points de contrôle de l'application."},
         ],
-        docs_url="/docs" if documentee else None,
-        redoc_url="/redoc" if documentee else None,
-        openapi_url="/openapi.json" if documentee else None,
+        # Documentation publique : FastAPI sert lui-même les trois routes.
+        # Sinon, routes/documentation.py les sert derrière une connexion.
+        docs_url="/docs" if publique else None,
+        redoc_url="/redoc" if publique else None,
+        openapi_url="/openapi.json" if publique else None,
     )
+    # Lue à chaque requête par la dépendance `configuration` : c'est la
+    # configuration choisie ici qui s'applique, pas celle d'ENVIRONNEMENT.
+    app.state.config = config
     
-    app.include_router(astronautes.router)
+    app.include_router(astronautes.lecture)
+    app.include_router(astronautes.ecriture)
     app.include_router(technique.router)
-    app.include_router(missions.router)
+    app.include_router(missions.lecture)
+    app.include_router(missions.ecriture)
+    if not publique:
+        app.include_router(documentation.router)
     enregistrer_gestionnaires(app)
     
     return app

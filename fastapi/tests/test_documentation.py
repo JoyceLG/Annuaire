@@ -117,10 +117,10 @@ def test_exemples_des_champs_sont_valides(modele):
 # Vérifie que l'exemple documenté pour le 422 a la même forme que la réponse
 # réelle à un corps invalide.
 @pytest.mark.parametrize("chemin", ["/api/astronautes", "/api/missions"])
-def test_exemple_422_a_la_forme_de_la_vraie_reponse(schema, client, chemin):
+def test_exemple_422_a_la_forme_de_la_vraie_reponse(schema, client_authentifie, chemin):
     exemple = exemple_documente(schema["paths"][chemin]["post"], 422)
 
-    reponse = client.post(chemin, json={})
+    reponse = client_authentifie.post(chemin, json={})
 
     assert reponse.status_code == 422
     assert set(reponse.json()) == set(exemple)
@@ -129,15 +129,73 @@ def test_exemple_422_a_la_forme_de_la_vraie_reponse(schema, client, chemin):
 # Vérifie que le 400 documenté est bien celui que renvoie FastAPI quand le
 # corps n'est pas un texte UTF-8 lisible : même code, même message.
 @pytest.mark.parametrize("chemin", ["/api/astronautes", "/api/missions"])
-def test_exemple_400_a_la_forme_de_la_vraie_reponse(schema, client, chemin):
+def test_exemple_400_a_la_forme_de_la_vraie_reponse(schema, client_authentifie, chemin):
     exemple = exemple_documente(schema["paths"][chemin]["post"], 400)
 
-    reponse = client.post(
+    reponse = client_authentifie.post(
         chemin, content=b"\x80", headers={"Content-Type": "application/json"}
     )
 
     assert reponse.status_code == 400
     assert reponse.json() == exemple
+
+
+# Vérifie que chaque écriture documente son 401, et que l'exemple est
+# exactement la réponse réelle à une requête sans jeton.
+@pytest.mark.parametrize(
+    "methode, chemin_doc, chemin_reel",
+    [
+        ("post", "/api/astronautes", "/api/astronautes"),
+        ("put", "/api/astronautes/{id_astronaute}", "/api/astronautes/1"),
+        ("patch", "/api/astronautes/{id_astronaute}", "/api/astronautes/1"),
+        ("delete", "/api/astronautes/{id_astronaute}", "/api/astronautes/1"),
+        ("post", "/api/missions", "/api/missions"),
+        ("put", "/api/missions/{id_mission}", "/api/missions/1"),
+        ("patch", "/api/missions/{id_mission}", "/api/missions/1"),
+        ("delete", "/api/missions/{id_mission}", "/api/missions/1"),
+    ],
+)
+def test_exemple_401_est_la_vraie_reponse(schema, client, methode, chemin_doc, chemin_reel):
+    exemple = exemple_documente(schema["paths"][chemin_doc][methode], 401)
+
+    reponse = client.request(methode, chemin_reel)
+
+    assert reponse.status_code == 401
+    assert reponse.json() == exemple
+
+
+# Vérifie que les lectures ne documentent pas de 401 : elles restent ouvertes.
+def test_lectures_ne_documentent_pas_401(schema):
+    for methode, chemin, operation in operations_metier(schema):
+        if methode == "get":
+            assert "401" not in operation["responses"], chemin
+
+
+# Vérifie que les listes documentent leurs deux formats de 422, et que chaque
+# exemple a la forme de la vraie réponse : paramètre invalide, limite trop grande.
+@pytest.mark.parametrize("chemin", ["/api/astronautes", "/api/missions"])
+@pytest.mark.parametrize(
+    "exemple, parametres", [("validation", "limite=0"), ("limite", "limite=101")]
+)
+def test_exemples_422_de_pagination(schema, client, chemin, exemple, parametres):
+    documente = schema["paths"][chemin]["get"]["responses"]["422"]
+    attendu = documente["content"]["application/json"]["examples"][exemple]["value"]
+
+    reponse = client.get(f"{chemin}?{parametres}")
+
+    assert reponse.status_code == 422
+    assert set(reponse.json()) == set(attendu)
+    if exemple == "limite":
+        assert reponse.json() == attendu
+
+
+# Vérifie que les paramètres de pagination sont décrits dans le schéma.
+@pytest.mark.parametrize("chemin", ["/api/astronautes", "/api/missions"])
+def test_parametres_de_pagination_decrits(schema, chemin):
+    parametres = {p["name"]: p for p in schema["paths"][chemin]["get"]["parameters"]}
+
+    for nom in ("limite", "decalage"):
+        assert parametres[nom].get("description"), nom
 
 
 # Vérifie que l'exemple documenté pour le 404 parle de la bonne ressource :
@@ -171,11 +229,11 @@ def test_exemple_404_decrit_la_bonne_ressource(schema, client, chemin_doc, chemi
         ("/api/missions", None, "annee=2100"),
     ],
 )
-def test_liste_ne_documente_pas_404(schema, client, chemin, a_supprimer, filtre):
+def test_liste_ne_documente_pas_404(schema, client_authentifie, chemin, a_supprimer, filtre):
     if a_supprimer:
-        assert client.delete(a_supprimer).status_code == 204
+        assert client_authentifie.delete(a_supprimer).status_code == 204
 
-    reponse = client.get(f"{chemin}?{filtre}")
+    reponse = client_authentifie.get(f"{chemin}?{filtre}")
     assert reponse.status_code == 200
     assert reponse.json() == []
 
@@ -199,17 +257,17 @@ def test_liste_ne_documente_pas_404(schema, client, chemin, a_supprimer, filtre)
         ("/api/missions", {"nom": "Apollo 18", "annee": 1975}),
     ],
 )
-def test_aucun_conflit_documente(schema, client, chemin, corps):
+def test_aucun_conflit_documente(schema, client_authentifie, chemin, corps):
     assert "409" not in schema["paths"][chemin]["post"]["responses"]
 
-    assert client.post(chemin, json=corps).status_code == 201
-    assert client.post(chemin, json=corps).status_code == 201
+    assert client_authentifie.post(chemin, json=corps).status_code == 201
+    assert client_authentifie.post(chemin, json=corps).status_code == 201
 
 
 # Vérifie que le 422 de cohérence rôle / qualification, levé dans la route
 # PATCH, est documenté avec son format {"erreur": ...}.
-def test_422_de_coherence_documente_sur_le_patch(schema, client):
-    reponse = client.patch("/api/astronautes/2", json={"role": "specialiste"})
+def test_422_de_coherence_documente_sur_le_patch(schema, client_authentifie):
+    reponse = client_authentifie.patch("/api/astronautes/2", json={"role": "specialiste"})
     assert reponse.status_code == 422
     assert set(reponse.json()) == {"erreur"}
 
@@ -218,12 +276,12 @@ def test_422_de_coherence_documente_sur_le_patch(schema, client):
     assert {"$ref": "#/components/schemas/Erreur"} in formes
 
 
-# Vérifie que fermer la documentation en production ne ferme que la
-# documentation : les routes de l'API répondent toujours.
+# Vérifie que protéger la documentation en production ne protège que la
+# documentation : les routes de lecture de l'API répondent toujours.
 def test_api_disponible_en_production_sans_documentation():
     client = TestClient(creer_app("production"))
 
-    assert client.get("/docs").status_code == 404
+    assert client.get("/docs").status_code == 401
     assert client.get("/api/technique/sante").status_code == 200
     assert client.get("/api/astronautes").status_code == 200
 
@@ -233,4 +291,4 @@ def test_api_disponible_en_production_sans_documentation():
 def test_creer_app_accepte_une_classe_de_configuration():
     client = TestClient(creer_app(ConfigProduction))
 
-    assert client.get("/openapi.json").status_code == 404
+    assert client.get("/openapi.json").status_code == 401
